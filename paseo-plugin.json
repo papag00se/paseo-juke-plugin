@@ -1,0 +1,7 @@
+{
+  "id": "juke",
+  "description": "Uses an inference judge to resume work an agent stopped short of doing.",
+  "requirements": {
+    "paseo": ">=0.9.0"
+  }
+}
