@@ -13,3 +13,20 @@ npm run typecheck
 paseo plugin install /home/jesse/Work/juke
 paseo plugin ls
 ```
+
+## Scope
+
+Juke stays out of runs that Role Orchestration owns — the role agent, its
+completion-gate and context helpers, and anything beneath them — because that
+system runs its own completion judge. Ownership is resolved by walking the
+agent's parent chain, since a subagent carries no role label of its own.
+
+## Tests
+
+```bash
+npm run typecheck
+npm test
+```
+
+The suite covers verdict recovery from prose/fenced replies, the self-trigger
+guard, and the role-ownership ancestry walk (including cycles and depth bounds).

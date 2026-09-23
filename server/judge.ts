@@ -4,22 +4,6 @@ import { z } from "zod";
 export const JukeJudgeLabel = "juke-judge";
 export const JukeFollowUpPrefix = "[Juke assessment]";
 
-/**
- * Role Orchestration runs its own completion gate. Judging those agents twice would let two
- * independent judges push conflicting follow-ups into the same turn, so Juke stays out of any
- * run the orchestrator owns — the role agent itself, its helpers, and anything beneath them.
- */
-const ROLE_ORCHESTRATOR_LABELS = [
-  "paseo-role-orchestrator.role-id",
-  "paseo-role-orchestrator.completion-gate",
-  "paseo-role-orchestrator.context-helper",
-];
-
-export function hasRoleOrchestratorLabel(labels: Record<string, string> | null | undefined): boolean {
-  if (!labels) return false;
-  return ROLE_ORCHESTRATOR_LABELS.some((label) => label in labels);
-}
-
 const verdictSchema = z.object({
   decision: z.enum(["continue", "leave-alone"]),
   rationale: z.string().min(1).max(2_000),

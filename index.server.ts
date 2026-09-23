@@ -1,7 +1,6 @@
-import type { PluginHandlerContext, PluginServerContext } from "@getpaseo/plugin/server";
-import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
+import type { PluginServerContext } from "@getpaseo/plugin/server";
+import { isRoleOrchestrated } from "./server/ownership";
 import {
-  hasRoleOrchestratorLabel,
   isJukeFollowUp,
   JukeFollowUpPrefix,
   JukeJudgeLabel,
@@ -105,24 +104,4 @@ export default function contribute(server: PluginServerContext) {
     removeStarted();
     removeEnded();
   };
-}
-
-/**
- * A subagent carries no role label of its own, so ownership is decided by walking the parent
- * chain. The depth bound keeps a corrupted or cyclic chain from stalling the handler.
- */
-async function isRoleOrchestrated(
-  paseo: PluginHandlerContext["paseo"],
-  agent: { labels?: Record<string, string> } | undefined,
-): Promise<boolean> {
-  let current = agent;
-  const seen = new Set<string>();
-  for (let depth = 0; current && depth < 8; depth += 1) {
-    if (hasRoleOrchestratorLabel(current.labels)) return true;
-    const parentId = getParentAgentIdFromLabels(current.labels);
-    if (!parentId || seen.has(parentId)) return false;
-    seen.add(parentId);
-    current = (await paseo.agents.ref(parentId).refresh())?.agent;
-  }
-  return false;
 }
