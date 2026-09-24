@@ -15,13 +15,24 @@ export function judgeLabels(judgedAgentId: string): Record<string, string> {
 }
 export const JukeFollowUpPrefix = "[Juke assessment]";
 
-const verdictSchema = z.object({
-  decision: z.enum(["continue", "leave-alone"]),
-  // The judge's own classification of what went wrong; used only for logging.
-  pattern: z.enum(["unperformed-work", "needless-permission"]).optional().catch(undefined),
-  rationale: z.string().min(1).max(2_000),
-  followUp: z.string().min(1).max(4_000).optional(),
-});
+// A continuation interrupts the agent, so it must be justified; leaving the agent alone needs no
+// justification. Judges regularly answer a bare {"decision":"leave-alone"}, and rejecting that
+// cost a corrective round-trip for a verdict that changes nothing.
+const verdictSchema = z.discriminatedUnion("decision", [
+  z.object({
+    decision: z.literal("continue"),
+    // The judge's own classification of what went wrong; used only for logging.
+    pattern: z.enum(["unperformed-work", "needless-permission"]).optional().catch(undefined),
+    rationale: z.string().min(1).max(2_000),
+    followUp: z.string().min(1).max(4_000).optional(),
+  }),
+  z.object({
+    decision: z.literal("leave-alone"),
+    pattern: z.enum(["unperformed-work", "needless-permission"]).optional().catch(undefined),
+    rationale: z.string().max(2_000).optional(),
+    followUp: z.string().max(4_000).optional(),
+  }),
+]);
 
 export type Verdict = z.output<typeof verdictSchema>;
 

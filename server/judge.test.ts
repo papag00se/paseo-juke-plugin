@@ -52,7 +52,12 @@ describe("parseVerdict", () => {
     expect(verdict?.pattern).toBeUndefined();
   });
 
-  it("rejects an empty rationale", () => {
+  // Seen live: a judge answered a bare leave-alone, which used to force a retry round-trip.
+  it("accepts leave-alone without a rationale", () => {
+    expect(parseVerdict('{"decision":"leave-alone"}')?.decision).toBe("leave-alone");
+  });
+
+  it("rejects a continue with an empty rationale", () => {
     expect(parseVerdict('{"decision":"continue","rationale":""}')).toBeNull();
   });
 });
