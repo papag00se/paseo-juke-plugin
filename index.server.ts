@@ -3,7 +3,7 @@ import { isRoleOrchestrated } from "./server/ownership";
 import {
   isJukeFollowUp,
   JukeFollowUpPrefix,
-  JukeJudgeLabel,
+  judgeLabels,
   judgePrompt,
   parseVerdict,
   VerdictRetryPrompt,
@@ -46,7 +46,7 @@ export default function contribute(server: PluginServerContext) {
         const judge = await paseo.workspaces.ref(event.agent.workspaceId).agents.create({
           title: "Juke inference judge",
           prompt: judgePrompt(event.timeline),
-          labels: { [JukeJudgeLabel]: "true", jukeParent: event.agent.id },
+          labels: judgeLabels(event.agent.id),
           config: {
             provider: `${event.agent.provider}/${model}`,
             systemPrompt: "You are a read-only semantic evaluator. Follow the prompt exactly and emit only its requested JSON.",

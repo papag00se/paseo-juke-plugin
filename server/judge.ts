@@ -1,7 +1,18 @@
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
+import { PARENT_AGENT_ID_LABEL } from "@getpaseo/protocol/agent-labels";
 import { z } from "zod";
 
 export const JukeJudgeLabel = "juke-judge";
+
+/**
+ * The judge is registered as a subagent of the agent it judges. Paseo never raises attention
+ * (OS/push notifications) for delegated agents, so without the parent label every judgement
+ * produced a "finished" notification. It also nests the judge under its agent in the UI and
+ * archives it along with that agent.
+ */
+export function judgeLabels(judgedAgentId: string): Record<string, string> {
+  return { [JukeJudgeLabel]: "true", [PARENT_AGENT_ID_LABEL]: judgedAgentId };
+}
 export const JukeFollowUpPrefix = "[Juke assessment]";
 
 const verdictSchema = z.object({

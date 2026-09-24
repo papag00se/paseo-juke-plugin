@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { isJukeFollowUp, JukeFollowUpPrefix, parseVerdict } from "./judge";
+import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
+import { isJukeFollowUp, JukeFollowUpPrefix, judgeLabels, parseVerdict } from "./judge";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 describe("parseVerdict", () => {
@@ -71,5 +72,13 @@ describe("isJukeFollowUp", () => {
 
   it("is false when no user message exists", () => {
     expect(isJukeFollowUp([assistant("hello")])).toBe(false);
+  });
+});
+
+describe("judgeLabels", () => {
+  // The daemon skips notifications for agents that satisfy this exact predicate. If the judge
+  // stops qualifying, every judgement raises an OS notification again.
+  it("marks the judge as delegated so the daemon never notifies for it", () => {
+    expect(isDelegatedAgent({ labels: judgeLabels("agent-1") })).toBe(true);
   });
 });
