@@ -39,6 +39,18 @@ describe("parseVerdict", () => {
     expect(parseVerdict('{"decision":"maybe","rationale":"r"}')).toBeNull();
   });
 
+  it("keeps the judge's pattern classification", () => {
+    const text = '{"decision":"continue","pattern":"needless-permission","rationale":"r","followUp":"f"}';
+    expect(parseVerdict(text)?.pattern).toBe("needless-permission");
+  });
+
+  // pattern is logging-only; a judge inventing a label must not cost us the verdict itself.
+  it("drops an unknown pattern without discarding the verdict", () => {
+    const verdict = parseVerdict('{"decision":"continue","pattern":"other","rationale":"r","followUp":"f"}');
+    expect(verdict?.decision).toBe("continue");
+    expect(verdict?.pattern).toBeUndefined();
+  });
+
   it("rejects an empty rationale", () => {
     expect(parseVerdict('{"decision":"continue","rationale":""}')).toBeNull();
   });

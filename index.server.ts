@@ -84,7 +84,11 @@ export default function contribute(server: PluginServerContext) {
         }
         if (verdict.decision !== "continue" || !verdict.followUp) return;
 
-        console.log("[juke] inference requested continuation", { agentId: event.agent.id, rationale: verdict.rationale });
+        console.log("[juke] inference requested continuation", {
+          agentId: event.agent.id,
+          pattern: verdict.pattern,
+          rationale: verdict.rationale,
+        });
         await paseo.agents.ref(event.agent.id).send(
           `${JukeFollowUpPrefix} ${verdict.followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,
         );
