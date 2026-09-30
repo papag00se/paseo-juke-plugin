@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
-import { isJukeFollowUp, JukeFollowUpPrefix, judgeLabels, parseVerdict } from "./judge";
+import { evidence, isJukeFollowUp, JukeFollowUpPrefix, judgeLabels, parseVerdict } from "./judge";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 describe("parseVerdict", () => {
@@ -77,6 +77,64 @@ describe("isJukeFollowUp", () => {
 
   it("is false when no user message exists", () => {
     expect(isJukeFollowUp([assistant("hello")])).toBe(false);
+  });
+});
+
+describe("judge evidence", () => {
+  const user = (text: string): AgentTimelineItem => ({ type: "user_message", text });
+  const assistant = (text: string): AgentTimelineItem => ({ type: "assistant_message", text });
+  const tool = (detail: unknown): AgentTimelineItem => ({
+    type: "tool_call", callId: "review", name: "read", status: "completed", error: null, detail,
+  }) as AgentTimelineItem;
+
+  it("preserves the outstanding request across image review and an interrupting status check", () => {
+    const binary = "base64-payload-".repeat(20_000);
+    const result = evidence([
+      user("Clearly I wanted you to act. Fill out all 45 creator cards."),
+      assistant("I'll fill the cards with verified data and mark gaps."),
+      tool({ type: "unknown", output: { content: [{ type: "image", data: binary, mimeType: "image/jpeg" }] } }),
+      user("Status report"),
+      assistant("Images and captions saved. Still finishing individual creator cards."),
+    ]);
+    const parsed = JSON.parse(result);
+    expect(parsed.items.filter((item: { type: string }) => item.type === "user_message").map((item: { text: string }) => item.text))
+      .toEqual(["Clearly I wanted you to act. Fill out all 45 creator cards.", "Status report"]);
+    expect(result).toContain("Still finishing individual creator cards");
+    expect(result).not.toContain("base64-payload-");
+    expect(result.length).toBeLessThanOrEqual(48_000);
+  });
+
+  it("keeps conversation ahead of large textual tool output and restores chronology", () => {
+    const timeline = [user("Complete the local records; do not publish."),
+      ...Array.from({ length: 80 }, () => tool({ type: "unknown", output: "noise".repeat(10_000) })),
+      user("Status report"), assistant("The records are still incomplete.")];
+    const result = evidence(timeline);
+    const parsed = JSON.parse(result);
+    expect(result.length).toBeLessThanOrEqual(48_000);
+    expect(parsed.omittedItems).toBeGreaterThan(0);
+    expect(parsed.items[0].text).toBe("Complete the local records; do not publish.");
+    expect(parsed.items.slice(-2).map((item: { text: string }) => item.text))
+      .toEqual(["Status report", "The records are still incomplete."]);
+  });
+
+  it("retains the latest response even when earlier user messages exhaust the budget", () => {
+    const timeline = [
+      ...Array.from({ length: 20 }, (_, index) => user(`earlier ${index}: ` + "x".repeat(8_000))),
+      user("Status report"), assistant("Local cards are still unfinished."),
+    ];
+    const parsed = JSON.parse(evidence(timeline));
+    expect(parsed.omittedItems).toBeGreaterThan(0);
+    expect(parsed.items.slice(-2).map((item: { text: string }) => item.text))
+      .toEqual(["Status report", "Local cards are still unfinished."]);
+  });
+
+  it("bounds oversized messages and escaped strings without producing broken JSON", () => {
+    const result = evidence([user("opening request " + '\\"'.repeat(100_000) + " final boundary"), assistant("Not done.")]);
+    const parsed = JSON.parse(result);
+    expect(result.length).toBeLessThanOrEqual(48_000);
+    expect(parsed.items[0].text).toMatch(/^opening request /);
+    expect(parsed.items[0].text).toMatch(/ final boundary$/);
+    expect(parsed.items[0].text).toContain("text omitted");
   });
 });
 

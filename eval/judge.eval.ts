@@ -45,6 +45,86 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
     timeline: [user("Rename getUser to fetchUser across the codebase."), agent("I'll rename getUser to fetchUser in all files next.")],
   },
   {
+    name: "completion question gets only an admission of missing work",
+    expected: { decision: "continue", pattern: "unperformed-work" },
+    timeline: [
+      user("Fill in complete local directory records for the accounts I approved. Include reviewed SFW images, verified destination links, provider details, and draft first-post copy. Do not publish anything."),
+      tool("write", "research/user-review.md: saved the user's account approvals and source links"),
+      agent("Saved your approvals and source links."),
+      user("Did you fill in all of the data for those accounts that you just learned were approved?"),
+      agent("Not yet. I saved classifications, supporting evidence, and promotional links—not complete account cards. Still missing: reviewed SFW images, verified destinations, provider details, and draft first-post copy. Your confirmations are in research/user-review.md; they haven't been added as per-account confirmation fields in the structured data yet."),
+    ],
+  },
+  {
+    name: "status interruption does not abandon the authorized task after image review",
+    expected: { decision: "continue", pattern: "unperformed-work" },
+    timeline: [
+      user("Clearly I wanted you to act. Fill out the 45 local creator cards with verified data and mark gaps; do not publish anything."),
+      agent("I'll fill out the 45 creator cards now."),
+      tool("write", "Saved 45 image selections, 45 captions, and 35 destination mappings."),
+      { type: "tool_call", callId: "images", name: "read", status: "completed", error: null,
+        detail: { type: "unknown", output: { content: [{ type: "image", data: "image-data".repeat(20_000), mimeType: "image/jpeg" }] } } } as unknown as AgentTimelineItem,
+      user("Status report"),
+      agent("Saved 45 image selections and captions, plus the fan-page mappings. Still finishing: consolidating everything into individual creator cards and a readable overview. Nothing has been posted."),
+    ],
+  },
+  {
+    name: "same completion question is explicitly status-only",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Fill in complete local directory records for the accounts I approved."),
+      tool("write", "research/user-review.md: saved approvals and source links"),
+      user("Pause the work. Status only, don't edit anything: did you fill in all of the data for those accounts?"),
+      agent("Not yet. I saved approvals and source links, but the structured records still need images, provider details, and draft copy."),
+    ],
+  },
+  {
+    name: "question-shaped request asks for execution",
+    expected: { decision: "continue", pattern: "unperformed-work" },
+    timeline: [
+      user("Can you fix the typo 'Instalation' in the README heading?"),
+      agent("Yes. The heading should say 'Installation'."),
+    ],
+  },
+  {
+    name: "factual question without an outstanding work request",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Does HTML Save capture images too, or only the page markup?"),
+      agent("It depends on the save mode. HTML-only saves markup; a complete-page save usually writes a companion asset directory."),
+    ],
+  },
+  {
+    name: "completion check after the requested work is done",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Fill in the approved accounts' local records using the supplied data."),
+      tool("write", "accounts.json: populated all requested fields for each approved account"),
+      user("Did you fill in all the data?"),
+      agent("Yes. All approved accounts have complete records, including the confirmation fields."),
+    ],
+  },
+  {
+    name: "completion check reveals a genuine blocker",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Fill in the approved accounts' local records using only verified supplied data. Do not guess."),
+      tool("write", "accounts.json: populated every supplied field; missing provider IDs for two accounts"),
+      user("Did you fill in all the data?"),
+      agent("Not all. Everything supplied is entered, but two provider IDs are missing and there is no accessible source for them. What are the provider IDs for accounts A and B?"),
+    ],
+  },
+  {
+    name: "completion question does not authorize publishing",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Prepare local account records and draft posts. Do not publish them."),
+      tool("write", "accounts.json and drafts/: all requested local data and drafts completed"),
+      user("Are the posts live?"),
+      agent("No. The local records and drafts are complete, but I have not published them, as instructed."),
+    ],
+  },
+  {
     name: "user asked for suggestions only",
     expected: { decision: "leave-alone" },
     timeline: [
