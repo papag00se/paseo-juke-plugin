@@ -1,46 +1,71 @@
-# Juke
+<div align="center">
 
-Juke is an inference-first Paseo plugin. After a completed agent turn, it launches a short-lived judge using the same provider. The judge semantically decides whether the agent stopped early in one of two ways:
+![Paseo Juke — illustrated project cover](docs/media/hero.png)
 
-- **unperformed-work**: the user wanted work and the agent ended its turn with a plan, promise, description, or status answer instead of doing it. This includes question-shaped requests and completion checks on previously requested work ("Did you fill in all the data?" → "Not yet; here's what's missing"). Genuine information-only or status-only questions are left alone.
-- **needless-permission**: the agent ended its turn asking "want me to…?" about a next step it clearly already knows, when that step serves a goal the user already stated. Legitimate questions are left alone: destructive, externally visible, or out-of-scope steps; real preference decisions; optional extras; and cases where the user said to hold off.
+# Paseo Juke
 
-Only an inference verdict of `continue` sends the original agent a follow-up.
+![Paseo compatibility](https://img.shields.io/badge/Paseo-0.9.1%20snapshot-22c55e?style=flat-square)
+![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)
+![Platform](https://img.shields.io/badge/Platform-Daemon%20plugin-64748b?style=flat-square)
 
-Juke deliberately contains no keyword lists, score thresholds, or rule-based intent/completion decisions. The only deterministic behavior is operational safety: JSON validation, discarding stale verdicts, and recognizing its own follow-up marker to prevent a loop.
+[Features](#features) · [Getting started](#getting-started) · [Compatibility](#compatibility) · [Reference](docs/REFERENCE.md)
 
-The judge receives the timeline as untrusted evidence, does not use tools, and returns a constrained JSON verdict. It is archived after every assessment. Evidence is bounded to 48,000 characters using whole JSON items: user messages take priority over assistant outcomes and tool details, inline images are omitted, and retained items stay chronological. This prevents image payloads from erasing the request behind an interrupting status check. A status check does not cancel outstanding work unless the user requests a pause or a status-only response.
+</div>
 
-Completed assessments log both `continue` and `leave-alone`, with the agent, judge, turn, and rationale, so a negative verdict is distinguishable from a judge that never ran.
+An agent can finish its response while leaving the requested work unfinished. Juke asks a short-lived judge to review completed turns, then sends a follow-up only when the assessment calls for continuation.
+
+## Features
+
+| Feature | What you get |
+| --- | --- |
+| Semantic review | A model evaluates intent and follow-through rather than a keyword score |
+| Two continuation cases | Unperformed work and unnecessary permission questions |
+| Clear boundaries | Genuine information questions, real blockers, and unauthorized actions stay separate |
+| Scoped judges | The judged agent's provider/model is reused; judges are archived afterward |
+| Loop protection | Stale verdicts, recursive follow-ups, and role-owned runs are excluded |
+| Host settings | Pause automatic assessments without removing the plugin UI |
+
+## How it fits
+
+```mermaid
+flowchart LR
+    A[Agent completes a turn] --> B[Judge reviews the request and outcome]
+    B --> C{Continue?}
+    C -->|Yes| D[Send a scoped follow-up]
+    C -->|No| E[Leave the agent alone]
+    D --> F[Archive the judge]
+    E --> F
+```
+
+## Getting started
+
+The root contains the original plugin. The separately preserved **Paseo 0.9.1 compatibility snapshot** includes the settings UI used by the recovered installation:
+
+```bash
+git clone https://github.com/papag00se/paseo-juke-plugin.git
+cd paseo-juke-plugin/compatibility/paseo-0.9.1
+npm ci --legacy-peer-deps
+npm run typecheck
+paseo plugin install "$PWD"
+```
+
+Open **Settings → Plugins → Juke → Settings** and choose whether to automatically assess completed turns. Assessments start separate judge agents and use the selected provider; model usage may incur costs. The compatibility snapshot retains its paid-OpenRouter refusal.
+
+## Compatibility
+
+The root targets Paseo 0.9.0 and later. The settings-enabled snapshot is bounded to **0.9.1–0.9.x**. It is published alongside the original implementation; the two variants share the `juke` runtime ID and should not be installed together under that ID.
+
+Juke does not own execution permissions. It evaluates the user's existing task scope and leaves tool authorization to the agent harness. Role Orchestrator-owned runs are excluded because they have their own completion system.
 
 ## Development
 
-```bash
-npm run typecheck
-paseo plugin install /home/jesse/Work/juke
-paseo plugin ls
-```
-
-## Scope
-
-Juke stays out of runs that Role Orchestration owns — the role agent, its
-completion-gate and context helpers, and anything beneath them — because that
-system runs its own completion judge. Ownership is resolved by walking the
-agent's parent chain, since a subagent carries no role label of its own.
-
-## Tests
+From the selected variant:
 
 ```bash
 npm run typecheck
 npm test
 ```
 
-`npm run eval` runs the judge prompt against a real model (default
-`anthropic/claude-opus-5-5`, override with `JUKE_EVAL_MODEL`) over synthetic
-transcripts for both patterns, including indirect requests and completion checks,
-and the cases that must be left alone (status-only questions, completed work,
-real blockers, and unauthorized publishing). It costs
-inference, so run it whenever the prompt changes rather than on every test run.
+The compatibility snapshot additionally provides `npm run test:settings`. `npm run eval` uses a real model and is separate from the unit suite.
 
-The suite covers verdict recovery from prose/fenced replies, the self-trigger
-guard, and the role-ownership ancestry walk (including cycles and depth bounds).
+[Judge behavior, settings, evidence limits, and tests →](docs/REFERENCE.md) · [0.9.1 snapshot](compatibility/paseo-0.9.1)
