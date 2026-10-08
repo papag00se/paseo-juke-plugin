@@ -1,6 +1,6 @@
 # Juke
 
-Juke is an inference-first Paseo plugin. After a completed agent turn, it launches a short-lived judge using the same provider. The judge semantically decides whether the agent stopped early in one of two ways:
+Juke is an inference-first Paseo plugin. After a completed agent turn, it launches a short-lived judge, by default on the judged agent's provider and model. The judge semantically decides whether the agent stopped early in one of two ways:
 
 - **unperformed-work**: the user wanted work and the agent ended its turn with a plan, promise, description, or status answer instead of doing it. This includes question-shaped requests and completion checks on previously requested work ("Did you fill in all the data?" → "Not yet; here's what's missing"). Genuine information-only or status-only questions are left alone.
 - **needless-permission**: the agent ended its turn asking "want me to…?" about a next step it clearly already knows, when that step serves a goal the user already stated. Legitimate questions are left alone: destructive, externally visible, or out-of-scope steps; real preference decisions; optional extras; and cases where the user said to hold off.
@@ -17,7 +17,7 @@ Completed assessments log both `continue` and `leave-alone`, with the agent, jud
 
 Open **Settings → Plugins → Juke → ⋯ → Settings**, or **Juke settings** in the Command Center. **Automatically assess completed turns** defaults on and saves immediately. Turn it off to pause assessments without disabling the plugin UI. Changing it invalidates pending assessments, even if it is subsequently turned back on; stale verdicts cannot send follow-ups. Existing judges are archived when their outstanding wait completes.
 
-Previously Juke had no user-facing settings. Provider/model selection remains automatic (the judged agent's live selection); no new model override or inference thresholds were added. Role Orchestrator exclusions, recursion guards, prompts, and the paid-OpenRouter refusal remain unchanged.
+**Judge model** chooses who judges. *Same as the agent being judged* (the default) reuses the judged agent's live provider and model. Choosing a provider and model runs every judge on that model, with the optional reasoning level. Selections save immediately. A provider without a chosen model still falls back to the judged agent's model. Paid OpenRouter judges are refused either way.
 
 ## Development
 

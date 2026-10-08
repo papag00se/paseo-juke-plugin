@@ -12,18 +12,20 @@
 
 </div>
 
-An agent can finish its response while leaving the requested work unfinished. Juke asks a short-lived judge to review completed turns, then sends a follow-up only when the assessment calls for continuation.
+🛑 Agents love to stop at *"Here's my plan…"* or *"Want me to go ahead?"* when you already asked them to do the work.
+
+🧑‍⚖️ Juke catches that. After every finished turn, a short-lived judge reads what you asked and what the agent actually did. If the agent stopped short, Juke sends it back to work. If not, it stays out of the way.
 
 ## Features
 
 | Feature | What you get |
 | --- | --- |
-| Semantic review | A model evaluates intent and follow-through rather than a keyword score |
-| Two continuation cases | Unperformed work and unnecessary permission questions |
-| Clear boundaries | Genuine information questions, real blockers, and unauthorized actions stay separate |
-| Scoped judges | The judged agent's provider/model is reused; judges are archived afterward |
-| Loop protection | Stale verdicts, recursive follow-ups, and role-owned runs are excluded |
-| Host settings | Pause automatic assessments without removing the plugin UI |
+| 🧠 Semantic review | A model judges intent and follow-through, not a keyword score |
+| 🎯 Two continuation cases | Unperformed work and unnecessary permission questions |
+| 🚧 Clear boundaries | Real questions, genuine blockers and unauthorized actions are left alone |
+| ⚖️ Your choice of judge | Reuse the judged agent's model, or pick a provider, model and reasoning level |
+| 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and Role Orchestrator runs are skipped |
+| ⏸️ One-switch pause | Turn automatic assessments off without removing the plugin |
 
 ## How it fits
 
@@ -49,9 +51,9 @@ npm run typecheck
 paseo plugin install "$PWD"
 ```
 
-Open **Settings → Plugins → Juke → Settings** and choose whether to automatically assess completed turns. Assessments start separate judge agents and use the selected provider; model usage may incur costs. The compatibility snapshot retains its paid-OpenRouter refusal.
+Open **Settings → Plugins → Juke → Settings**. Automatic assessment is on by default. Under **Judge model**, keep *Same as the agent being judged* or choose a provider, model and reasoning level. Every assessment runs a separate judge agent, so it uses model quota. Each verdict appears in the plugin's **Logs** menu.
 
-![Juke settings in Paseo: the automatic assessment switch and judge behavior](docs/media/settings.png)
+![Juke settings in Paseo: the automatic assessment switch and the judge provider, model and reasoning level](docs/media/settings.png)
 
 ## Compatibility
 

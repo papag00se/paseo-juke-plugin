@@ -1,6 +1,6 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { isRoleOrchestrated } from "./server/ownership";
-import { preferences } from "./shared/settings";
+import { configuredJudge, preferences, type JudgeChoice } from "./shared/settings";
 import {
   isJukeFollowUp,
   JukeFollowUpPrefix,
@@ -22,12 +22,14 @@ export default function contribute(server: PluginServerContext) {
     const epoch = settingsEpoch;
     const state = await settings.read();
     if (state.status !== "ready") throw new Error(`Juke settings unavailable: ${state.error}`);
-    return { enabled: state.values.enabled, revision: `${epoch}:${state.revision}` };
+    return { enabled: state.values.enabled, judge: configuredJudge(state.values), revision: `${epoch}:${state.revision}` };
   });
   return () => { unsubscribe(); stop(); };
 }
 
-export function originalAutomaticContribution(server: PluginServerContext, readSettings = async () => ({ enabled: true, revision: "default" })) {
+type JukeSettings = { enabled: boolean; judge?: JudgeChoice | null; revision: string };
+
+export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => ({ enabled: true, revision: "default" })) {
   const ownJudgeIds = new Set<string>();
   const generationByAgentId = new Map<string, number>();
   let stopped = false;
@@ -57,16 +59,16 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           const next = await readSettings();
           return !stopped && next.enabled && next.revision === preferences.revision && generationByAgentId.get(event.agent.id) === generation;
         };
-        // The SDK needs a "provider/model" selection; the hook payload carries only the
-        // bare provider, so resolve the judged agent's live model and reuse it.
         const snapshot = await paseo.agents.ref(event.agent.id).refresh();
         if (await isRoleOrchestrated(paseo, snapshot?.agent)) return;
-        const model = snapshot?.agent?.runtimeInfo?.model ?? snapshot?.agent?.model;
+        // Without a configured judge, reuse the judged agent. The SDK needs a "provider/model"
+        // selection and the hook payload carries only the bare provider, so resolve its live model.
+        const model = preferences.judge?.model ?? snapshot?.agent?.runtimeInfo?.model ?? snapshot?.agent?.model;
         if (!model) {
           console.error("[juke] no model resolved for judge", { agentId: event.agent.id });
           return;
         }
-        const selection = `${event.agent.provider}/${model}`;
+        const selection = `${preferences.judge?.provider ?? event.agent.provider}/${model}`;
         // Operator policy: a judge must not bill OpenRouter prepaid credit.
         if (!permitsJudgeSelection(selection, model)) {
           console.error("[juke] paid OpenRouter judge refused");
@@ -79,6 +81,7 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           labels: judgeLabels(event.agent.id),
           config: {
             provider: selection,
+            ...(preferences.judge?.thinkingOptionId ? { thinkingOptionId: preferences.judge.thinkingOptionId } : {}),
             systemPrompt: "You are a read-only semantic evaluator. Follow the prompt exactly and emit only its requested JSON.",
           },
         });

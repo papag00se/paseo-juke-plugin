@@ -14,11 +14,11 @@ const { default: contribute } = await import("../index.server.ts");
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const verdict = { status: "idle", lastMessage: JSON.stringify({ decision: "continue", rationale: "Work remains", followUp: "Finish the requested work." }) };
 
-function setup(t, { enabled = true, preparation, judgement } = {}) {
+function setup(t, { enabled = true, judgeValues = {}, preparation, judgement } = {}) {
   const hooks = new Map(), created = [], sent = [], archived = [], registered = [];
   // Revisions are content-addressed, not monotonic: false → true restores the
   // original revision. Subscribers must still invalidate the old assessment.
-  let state = { status: "ready", values: { enabled }, revision: String(enabled) };
+  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, ...judgeValues }, revision: String(enabled) };
   const listeners = new Set();
   t.mock.method(console, "log", () => {});
   const agent = { id: "original", workspaceId: "workspace", provider: "test", model: "test-model", labels: {} };
@@ -39,7 +39,7 @@ function setup(t, { enabled = true, preparation, judgement } = {}) {
   });
   t.after(stop);
   return { created, sent, archived, registered, stop,
-    change(enabled) { state = { ...state, values: { enabled }, revision: String(enabled) }; for (const listener of listeners) listener(state); },
+    change(enabled) { state = { ...state, values: { ...state.values, enabled }, revision: String(enabled) }; for (const listener of listeners) listener(state); },
     async fire() {
       hooks.get("agent.turn_ended")({ agent, outcome: { kind: "completed" }, timeline: [{ type: "user_message", text: "Finish the work." }], turnId: "turn" }, { paseo });
       await setImmediate();
@@ -50,12 +50,25 @@ function setup(t, { enabled = true, preparation, judgement } = {}) {
 test("native settings preserve automatic assessment by default; enabled runs still reuse the original model", async t => {
   const h = setup(t); await h.fire();
   assert.equal(h.registered[0].scope, "host");
-  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true });
+  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null });
+  assert.deepEqual(h.registered[0].schema.parse({ enabled: false }).enabled, false);
   assert.equal(h.created.length, 1);
   assert.equal(h.created[0].config.provider, "test/test-model");
   assert.equal(h.sent.length, 1);
   assert.match(h.sent[0].message, /^\[Juke assessment\]/);
   assert.deepEqual(h.archived, ["judge"]);
+});
+
+test("a configured judge provider, model and reasoning level replace the judged agent's model", async t => {
+  const h = setup(t, { judgeValues: { judgeProvider: "pi", judgeModel: "judge-model", judgeThinkingOptionId: "high" } }); await h.fire();
+  assert.equal(h.created[0].config.provider, "pi/judge-model");
+  assert.equal(h.created[0].config.thinkingOptionId, "high");
+});
+
+test("a provider without a chosen model still reuses the judged agent's model", async t => {
+  const h = setup(t, { judgeValues: { judgeProvider: "pi" } }); await h.fire();
+  assert.equal(h.created[0].config.provider, "test/test-model");
+  assert.equal(h.created[0].config.thinkingOptionId, undefined);
 });
 
 test("disabled assessments create no judges and send no follow-ups", async t => {
