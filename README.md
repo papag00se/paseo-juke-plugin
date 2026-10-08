@@ -51,6 +51,8 @@ paseo plugin install "$PWD"
 
 Open **Settings → Plugins → Juke → Settings** and choose whether to automatically assess completed turns. Assessments start separate judge agents and use the selected provider; model usage may incur costs. The compatibility snapshot retains its paid-OpenRouter refusal.
 
+![Juke settings in Paseo: the automatic assessment switch and judge behavior](docs/media/settings.png)
+
 ## Compatibility
 
 The root targets Paseo 0.9.0 and later. The settings-enabled snapshot is bounded to **0.9.1–0.9.x**. It is published alongside the original implementation; the two variants share the `juke` runtime ID and should not be installed together under that ID.
