@@ -1,6 +1,7 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { isRoleOrchestrated } from "./server/ownership";
-import { configuredJudge, preferences, type JudgeChoice } from "./shared/settings";
+import { configuredJudge, enabledJukes, preferences, type JudgeChoice } from "./shared/settings";
+import { JukeIds, type JukeId } from "./shared/jukes";
 import {
   isJukeFollowUp,
   JukeFollowUpPrefix,
@@ -22,14 +23,14 @@ export default function contribute(server: PluginServerContext) {
     const epoch = settingsEpoch;
     const state = await settings.read();
     if (state.status !== "ready") throw new Error(`Juke settings unavailable: ${state.error}`);
-    return { enabled: state.values.enabled, judge: configuredJudge(state.values), revision: `${epoch}:${state.revision}` };
+    return { enabled: state.values.enabled, jukes: enabledJukes(state.values), judge: configuredJudge(state.values), revision: `${epoch}:${state.revision}` };
   });
   return () => { unsubscribe(); stop(); };
 }
 
-type JukeSettings = { enabled: boolean; judge?: JudgeChoice | null; revision: string };
+type JukeSettings = { enabled: boolean; jukes: readonly JukeId[]; judge?: JudgeChoice | null; revision: string };
 
-export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => ({ enabled: true, revision: "default" })) {
+export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => ({ enabled: true, jukes: JukeIds, revision: "default" })) {
   const ownJudgeIds = new Set<string>();
   const generationByAgentId = new Map<string, number>();
   let stopped = false;
@@ -54,7 +55,7 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
       let judgeId: string | undefined;
       try {
         const preferences = await readSettings();
-        if (!preferences.enabled || stopped || !event.agent.workspaceId) return;
+        if (!preferences.enabled || !preferences.jukes.length || stopped || !event.agent.workspaceId) return;
         const current = async () => {
           const next = await readSettings();
           return !stopped && next.enabled && next.revision === preferences.revision && generationByAgentId.get(event.agent.id) === generation;
@@ -77,7 +78,7 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
         if (!(await current())) return;
         const judge = await paseo.workspaces.ref(event.agent.workspaceId).agents.create({
           title: "Juke inference judge",
-          prompt: judgePrompt(event.timeline),
+          prompt: judgePrompt(event.timeline, preferences.jukes),
           labels: judgeLabels(event.agent.id),
           config: {
             provider: selection,
@@ -125,6 +126,11 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           rationale: verdict.rationale,
         });
         if (verdict.decision !== "continue" || !verdict.followUp || !(await current())) return;
+        // The judge is told which jukes are off; this enforces the user's choice if it strays.
+        if (!preferences.jukes.includes(verdict.pattern)) {
+          console.log("[juke] continuation skipped: juke turned off", { agentId: event.agent.id, pattern: verdict.pattern });
+          return;
+        }
         await paseo.agents.ref(event.agent.id).send(
           `${JukeFollowUpPrefix} ${verdict.followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,
         );

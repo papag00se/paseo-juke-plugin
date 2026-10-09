@@ -10,6 +10,7 @@
 import { spawnSync } from "node:child_process";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { judgePrompt, parseVerdict, type Verdict } from "../server/judge";
+import { JukeIds, type JukeId } from "../shared/jukes";
 
 const user = (text: string) => ({ type: "user_message", text }) as AgentTimelineItem;
 const agent = (text: string) => ({ type: "assistant_message", text }) as AgentTimelineItem;
@@ -17,7 +18,7 @@ const tool = (name: string, detail: string) =>
   ({ type: "tool_call", callId: name, name, status: "completed", error: null, detail: { type: "unknown", input: detail } }) as unknown as AgentTimelineItem;
 
 type Expected = { decision: Verdict["decision"]; pattern?: Verdict["pattern"] };
-const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }[] = [
+const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[]; turnedOff?: JukeId[] }[] = [
   {
     name: "offers the obvious in-scope next step",
     expected: { decision: "continue", pattern: "stopped-at-next-steps" },
@@ -192,6 +193,16 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
     ],
   },
   {
+    name: "a turned-off juke is not filed under a neighboring one",
+    expected: { decision: "leave-alone" },
+    turnedOff: ["paused-on-its-own"],
+    timeline: [
+      user("Convert all 40 class components in src/components to function components with hooks."),
+      tool("edit", "converted 12 of 40 components: Header, Footer, Nav, ..."),
+      agent("I've converted the first 12 components. This is a long job, so I'll pause here. Let me know if you'd like me to continue with the remaining 28."),
+    ],
+  },
+  {
     name: "a batch checkpoint the user asked for is left alone",
     expected: { decision: "leave-alone" },
     timeline: [
@@ -296,18 +307,22 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
 
 const model = process.env.JUKE_EVAL_MODEL ?? "anthropic/claude-opus-5-5";
 
-function judge(timeline: AgentTimelineItem[]): Verdict | null {
-  const run = spawnSync("pi", ["-p", "--no-session", "--no-tools", "--model", model, judgePrompt(timeline)], {
+function judge(timeline: AgentTimelineItem[], turnedOff: readonly JukeId[] = []): Verdict | null {
+  const enabled = JukeIds.filter((id) => !turnedOff.includes(id));
+  const run = spawnSync("pi", ["-p", "--no-session", "--no-tools", "--model", model, judgePrompt(timeline, enabled)], {
     encoding: "utf8",
     timeout: 180_000,
   });
   if (run.status !== 0) console.error(run.stderr);
-  return parseVerdict(run.stdout ?? "");
+  const verdict = parseVerdict(run.stdout ?? "");
+  // An unreadable reply is a different failure from a wrong verdict; show what the judge said.
+  if (!verdict) console.error(`      raw reply: ${(run.stdout ?? "").slice(0, 400) || "(empty)"}`);
+  return verdict;
 }
 
 let failures = 0;
 for (const testCase of cases) {
-  const verdict = judge(testCase.timeline);
+  const verdict = judge(testCase.timeline, testCase.turnedOff);
   const ok =
     verdict?.decision === testCase.expected.decision &&
     (testCase.expected.pattern === undefined || verdict.pattern === testCase.expected.pattern);

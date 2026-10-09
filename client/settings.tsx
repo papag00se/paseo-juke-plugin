@@ -2,6 +2,7 @@ import { usePaseo, useSettings, type PluginSurfaceProps } from "@getpaseo/plugin
 import { SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
 import { Text, View } from "react-native";
+import { Jukes, type JukeId } from "../shared/jukes";
 import { preferences } from "../shared/settings";
 
 const SAME_AS_AGENT = "";
@@ -22,13 +23,21 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
   const models = (provider?.models ?? []).filter(model => model.isSelectable !== false);
   const model = models.find(candidate => candidate.id === values.judgeModel);
   const sameAsAgent = values.judgeProvider === SAME_AS_AGENT;
+  const toggleJuke = (id: JukeId, on: boolean) => save({ disabledJukes: on ? values.disabledJukes.filter(other => other !== id) : [...values.disabledJukes, id] });
 
   return <View style={{ padding: layout.compact ? 12 : 20, gap: 16 }}>
     <SettingsSection title="Juke">
       <SettingsCard>
         <SettingsSwitch label="Automatically assess completed turns" value={values.enabled} disabled={settings.saving} onValueChange={enabled => save({ enabled })} hint="Turn this off to pause Juke. Pending assessments won't send follow-ups after this changes." />
       </SettingsCard>
-      <Text style={muted}>After an agent finishes a turn, Juke checks whether it stopped at a plan, a promise or an unnecessary permission question. If so, Juke tells it to carry on.</Text>
+      <Text style={muted}>After an agent finishes a turn, Juke checks whether it stopped before the work was done. If so, Juke tells it to carry on.</Text>
+    </SettingsSection>
+    <SettingsSection title="What Juke catches">
+      <SettingsCard>
+        {Jukes.map(juke => <SettingsSwitch key={juke.id} label={juke.title} hint={juke.example} value={!values.disabledJukes.includes(juke.id)}
+          disabled={settings.saving || !values.enabled} onValueChange={on => toggleJuke(juke.id, on)} />)}
+      </SettingsCard>
+      <Text style={muted}>Turn one off to let agents stop that way without a nudge.</Text>
     </SettingsSection>
     <SettingsSection title="Judge model">
       <SettingsCard>

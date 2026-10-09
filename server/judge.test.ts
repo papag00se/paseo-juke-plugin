@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
-import { evidence, isJukeFollowUp, JukeFollowUpPrefix, JukePatterns, judgeLabels, judgePrompt, parseVerdict } from "./judge";
+import { evidence, isJukeFollowUp, JukeFollowUpPrefix, judgeLabels, judgePrompt, parseVerdict } from "./judge";
+import { JukeIds } from "../shared/jukes";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 describe("parseVerdict", () => {
@@ -12,14 +13,14 @@ describe("parseVerdict", () => {
   });
 
   it("accepts a fenced verdict", () => {
-    const text = '```json\n{"decision":"continue","rationale":"r","followUp":"do it"}\n```';
+    const text = '```json\n{"decision":"continue","pattern":"handed-work-back","rationale":"r","followUp":"do it"}\n```';
     expect(parseVerdict(text)?.followUp).toBe("do it");
   });
 
   // Judges routinely narrate around the verdict; discarding those replies silently dropped
   // roughly half of all verdicts before the balanced-brace scan existed.
   it("recovers a verdict wrapped in prose", () => {
-    const text = 'Here is my verdict:\n{"decision":"continue","rationale":"r","followUp":"f"}\nHope that helps.';
+    const text = 'Here is my verdict:\n{"decision":"continue","pattern":"handed-work-back","rationale":"r","followUp":"f"}\nHope that helps.';
     expect(parseVerdict(text)?.decision).toBe("continue");
   });
 
@@ -41,7 +42,7 @@ describe("parseVerdict", () => {
   });
 
   it("keeps the judge's pattern classification", () => {
-    for (const pattern of JukePatterns) {
+    for (const pattern of JukeIds) {
       const text = `{"decision":"continue","pattern":"${pattern}","rationale":"r","followUp":"f"}`;
       expect(parseVerdict(text)?.pattern).toBe(pattern);
     }
@@ -50,13 +51,28 @@ describe("parseVerdict", () => {
   // The judge can only report a juke it was told about; a label missing from the prompt is never logged.
   it("describes every juke in the judge prompt", () => {
     const prompt = judgePrompt([]);
-    for (const pattern of JukePatterns) expect(prompt).toContain(`${pattern}:`);
+    for (const pattern of JukeIds) expect(prompt).toContain(`${pattern}:`);
   });
 
-  // pattern is logging-only; a judge inventing a label must not cost us the verdict itself.
-  it("drops an unknown pattern without discarding the verdict", () => {
-    const verdict = parseVerdict('{"decision":"continue","pattern":"other","rationale":"r","followUp":"f"}');
-    expect(verdict?.decision).toBe("continue");
+  // A juke the user turned off must not be judged, and the judge must know that behavior is acceptable,
+  // or it would file the same stop under a neighboring juke.
+  it("judges only enabled jukes and names the turned-off ones as acceptable", () => {
+    const prompt = judgePrompt([], JukeIds.filter((id) => id !== "paused-on-its-own"));
+    expect(prompt).not.toContain("paused-on-its-own:");
+    expect(prompt).toMatch(/turned off these checks[^\n]*paused-on-its-own/);
+    expect(prompt).not.toMatch(/"pattern":[^\n]*paused-on-its-own/);
+  });
+
+  // The pattern decides whether the user's toggles allow a continuation, so a continue must carry a known one.
+  it("rejects a continue without a known pattern", () => {
+    expect(parseVerdict('{"decision":"continue","rationale":"r","followUp":"f"}')).toBeNull();
+    expect(parseVerdict('{"decision":"continue","pattern":"other","rationale":"r","followUp":"f"}')).toBeNull();
+  });
+
+  // On a leave-alone the pattern changes nothing, so an invented label must not cost the verdict.
+  it("drops an unknown pattern on a leave-alone", () => {
+    const verdict = parseVerdict('{"decision":"leave-alone","pattern":"other"}');
+    expect(verdict?.decision).toBe("leave-alone");
     expect(verdict?.pattern).toBeUndefined();
   });
 

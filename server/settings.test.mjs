@@ -12,13 +12,14 @@ registerHooks({ resolve(specifier, context, next) {
 } });
 const { default: contribute } = await import("../index.server.ts");
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
-const verdict = { status: "idle", lastMessage: JSON.stringify({ decision: "continue", rationale: "Work remains", followUp: "Finish the requested work." }) };
+const continueAs = pattern => ({ status: "idle", lastMessage: JSON.stringify({ decision: "continue", pattern, rationale: "Work remains", followUp: "Finish the requested work." }) });
+const verdict = continueAs("announced-then-stopped");
 
-function setup(t, { enabled = true, judgeValues = {}, preparation, judgement } = {}) {
+function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, result = verdict } = {}) {
   const hooks = new Map(), created = [], sent = [], archived = [], registered = [];
   // Revisions are content-addressed, not monotonic: false → true restores the
   // original revision. Subscribers must still invalidate the old assessment.
-  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, ...judgeValues }, revision: String(enabled) };
+  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], ...judgeValues }, revision: String(enabled) };
   const listeners = new Set();
   t.mock.method(console, "log", () => {});
   const agent = { id: "original", workspaceId: "workspace", provider: "test", model: "test-model", labels: {} };
@@ -30,7 +31,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement } =
     }) },
     workspaces: { ref: () => ({ agents: { create: async options => {
       created.push(options);
-      return { id: "judge", waitForFinish: async () => judgement ? judgement.promise : verdict, send: async () => {} };
+      return { id: "judge", waitForFinish: async () => judgement ? judgement.promise : result, send: async () => {} };
     } } }) },
   };
   const stop = contribute({
@@ -50,7 +51,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement } =
 test("native settings preserve automatic assessment by default; enabled runs still reuse the original model", async t => {
   const h = setup(t); await h.fire();
   assert.equal(h.registered[0].scope, "host");
-  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null });
+  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [] });
   assert.deepEqual(h.registered[0].schema.parse({ enabled: false }).enabled, false);
   assert.equal(h.created.length, 1);
   assert.equal(h.created[0].config.provider, "test/test-model");
@@ -69,6 +70,30 @@ test("a provider without a chosen model still reuses the judged agent's model", 
   const h = setup(t, { judgeValues: { judgeProvider: "pi" } }); await h.fire();
   assert.equal(h.created[0].config.provider, "test/test-model");
   assert.equal(h.created[0].config.thinkingOptionId, undefined);
+});
+
+test("a turned-off juke is left out of the judge prompt and its continuation is not sent", async t => {
+  const h = setup(t, { judgeValues: { disabledJukes: ["announced-then-stopped"] } }); await h.fire();
+  assert.equal(h.created.length, 1);
+  assert.doesNotMatch(h.created[0].prompt, /^\d+\. announced-then-stopped:/m);
+  assert.deepEqual(h.sent, []);
+  assert.deepEqual(h.archived, ["judge"]);
+});
+
+test("a continuation for a juke that is still on is sent", async t => {
+  const h = setup(t, { judgeValues: { disabledJukes: ["announced-then-stopped"] }, result: continueAs("paused-on-its-own") }); await h.fire();
+  assert.equal(h.sent.length, 1);
+});
+
+test("with every juke turned off, no judge runs", async t => {
+  const { JukeIds } = await import("../shared/jukes.ts");
+  const h = setup(t, { judgeValues: { disabledJukes: [...JukeIds] } }); await h.fire();
+  assert.deepEqual(h.created, []); assert.deepEqual(h.sent, []);
+});
+
+test("an unknown stored juke id does not invalidate the other settings", async t => {
+  const h = setup(t);
+  assert.deepEqual(h.registered[0].schema.parse({ enabled: false, disabledJukes: ["retired-juke"] }).enabled, false);
 });
 
 test("disabled assessments create no judges and send no follow-ups", async t => {

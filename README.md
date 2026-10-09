@@ -45,6 +45,7 @@ The names above appear in the plugin's **Logs** with each verdict. [Exact judgin
 | 🚧 Clear boundaries | Real questions, genuine blockers and unauthorized actions are left alone |
 | ⚖️ Your choice of judge | Reuse the judged agent's model, or pick a provider, model and reasoning level |
 | 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and Role Orchestrator runs are skipped |
+| 🎛️ Per-juke switches | Turn off any juke you don't want caught |
 | ⏸️ One-switch pause | Turn automatic assessments off without removing the plugin |
 
 ## How it fits
@@ -69,9 +70,9 @@ npm run typecheck
 paseo plugin install "$PWD"
 ```
 
-Open **Settings → Plugins → Juke → Settings**. Automatic assessment is on by default. Under **Judge model**, keep *Same as the agent being judged* or choose a provider, model and reasoning level. Every assessment runs a separate judge agent, so it uses model quota. Each verdict appears in the plugin's **Logs** menu.
+Open **Settings → Plugins → Juke → Settings**. Automatic assessment is on by default. Under **What Juke catches**, each juke has its own switch with a one-line example; all start on. Turn one off and agents may stop that way without a nudge. Under **Judge model**, keep *Same as the agent being judged* or choose a provider, model and reasoning level. Every assessment runs a separate judge agent, so it uses model quota. Each verdict appears in the plugin's **Logs** menu.
 
-![Juke settings in Paseo: the automatic assessment switch and the judge provider, model and reasoning level](docs/media/settings.png)
+![Juke settings in Paseo: the automatic assessment switch, a switch with an example for each of the nine jukes, and the judge model choice](docs/media/settings.png)
 
 ## Compatibility
 
