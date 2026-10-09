@@ -1,7 +1,0 @@
-Original Juke source is preserved in ../juke. This compatible recovery copy registers no automatic hooks until the user explicitly authorizes its separate judge agents. No inference has been executed.
-
-2026-10-02: Jesse explicitly authorized Juke automatic judge agents as a
-scoped exception to the no separate agents/tasks instruction. The entry
-now registers the original hooks. Paid OpenRouter selections remain blocked.
-Runtime typecheck, 32 unit tests, two billing tests, and hook cleanup passed.
-Only Juke was reloaded; the daemon was not restarted.

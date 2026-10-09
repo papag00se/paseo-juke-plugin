@@ -1,15 +1,35 @@
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { isRoleOrchestrated } from "./server/ownership";
+import { configuredJudge, preferences, type JudgeChoice } from "./shared/settings";
 import {
   isJukeFollowUp,
   JukeFollowUpPrefix,
   judgeLabels,
   judgePrompt,
   parseVerdict,
+  permitsJudgeSelection,
   VerdictRetryPrompt,
 } from "./server/judge";
 
 export default function contribute(server: PluginServerContext) {
+  // Jesse explicitly authorized Juke's judge agents on 2026-10-02.
+  const settings = server.registerSettings(preferences);
+  // Paseo revisions are content hashes: disabling and re-enabling can restore
+  // the same revision. An epoch also invalidates assessments across that cycle.
+  let settingsEpoch = 0;
+  const unsubscribe = settings.subscribe(() => { settingsEpoch++; });
+  const stop = originalAutomaticContribution(server, async () => {
+    const epoch = settingsEpoch;
+    const state = await settings.read();
+    if (state.status !== "ready") throw new Error(`Juke settings unavailable: ${state.error}`);
+    return { enabled: state.values.enabled, judge: configuredJudge(state.values), revision: `${epoch}:${state.revision}` };
+  });
+  return () => { unsubscribe(); stop(); };
+}
+
+type JukeSettings = { enabled: boolean; judge?: JudgeChoice | null; revision: string };
+
+export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => ({ enabled: true, revision: "default" })) {
   const ownJudgeIds = new Set<string>();
   const generationByAgentId = new Map<string, number>();
   let stopped = false;
@@ -33,30 +53,44 @@ export default function contribute(server: PluginServerContext) {
     void (async () => {
       let judgeId: string | undefined;
       try {
-        if (!event.agent.workspaceId) return;
-        // The SDK needs a "provider/model" selection; the hook payload carries only the
-        // bare provider, so resolve the judged agent's live model and reuse it.
+        const preferences = await readSettings();
+        if (!preferences.enabled || stopped || !event.agent.workspaceId) return;
+        const current = async () => {
+          const next = await readSettings();
+          return !stopped && next.enabled && next.revision === preferences.revision && generationByAgentId.get(event.agent.id) === generation;
+        };
         const snapshot = await paseo.agents.ref(event.agent.id).refresh();
         if (await isRoleOrchestrated(paseo, snapshot?.agent)) return;
-        const model = snapshot?.agent?.runtimeInfo?.model ?? snapshot?.agent?.model;
+        // Without a configured judge, reuse the judged agent. The SDK needs a "provider/model"
+        // selection and the hook payload carries only the bare provider, so resolve its live model.
+        const model = preferences.judge?.model ?? snapshot?.agent?.runtimeInfo?.model ?? snapshot?.agent?.model;
         if (!model) {
           console.error("[juke] no model resolved for judge", { agentId: event.agent.id });
           return;
         }
+        const selection = `${preferences.judge?.provider ?? event.agent.provider}/${model}`;
+        // Operator policy: a judge must not bill OpenRouter prepaid credit.
+        if (!permitsJudgeSelection(selection, model)) {
+          console.error("[juke] paid OpenRouter judge refused");
+          return;
+        }
+        if (!(await current())) return;
         const judge = await paseo.workspaces.ref(event.agent.workspaceId).agents.create({
           title: "Juke inference judge",
           prompt: judgePrompt(event.timeline),
           labels: judgeLabels(event.agent.id),
           config: {
-            provider: `${event.agent.provider}/${model}`,
+            provider: selection,
+            ...(preferences.judge?.thinkingOptionId ? { thinkingOptionId: preferences.judge.thinkingOptionId } : {}),
             systemPrompt: "You are a read-only semantic evaluator. Follow the prompt exactly and emit only its requested JSON.",
           },
         });
         judgeId = judge.id;
         ownJudgeIds.add(judge.id);
+        if (!(await current())) return;
 
         const result = await judge.waitForFinish();
-        if (stopped || generationByAgentId.get(event.agent.id) !== generation) return;
+        if (!(await current())) return;
         if (result.status !== "idle" || !result.lastMessage) {
           console.error("[juke] inference judge did not complete", { agentId: event.agent.id, error: result.error });
           return;
@@ -72,7 +106,7 @@ export default function contribute(server: PluginServerContext) {
           });
           await judge.send(VerdictRetryPrompt);
           const retry = await judge.waitForFinish();
-          if (stopped || generationByAgentId.get(event.agent.id) !== generation) return;
+          if (!(await current())) return;
           verdict = retry.status === "idle" && retry.lastMessage ? parseVerdict(retry.lastMessage) : null;
           if (!verdict) {
             console.error("[juke] verdict unparseable after retry; skipping this turn", {
@@ -90,7 +124,7 @@ export default function contribute(server: PluginServerContext) {
           pattern: verdict.pattern,
           rationale: verdict.rationale,
         });
-        if (verdict.decision !== "continue" || !verdict.followUp) return;
+        if (verdict.decision !== "continue" || !verdict.followUp || !(await current())) return;
         await paseo.agents.ref(event.agent.id).send(
           `${JukeFollowUpPrefix} ${verdict.followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,
         );

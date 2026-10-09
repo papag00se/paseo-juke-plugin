@@ -11,16 +11,19 @@
     "client/",
     "server/",
     "shared/",
-    "!server/*.test.ts"
+    "!server/*.test.ts",
+    "!server/*.test.mjs"
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "vitest run --exclude 'compatibility/**' server/*.test.ts",
+    "test": "vitest run server/*.test.ts && node --test server/settings.test.mjs",
+    "test:settings": "node --test server/settings.test.mjs",
     "eval": "tsx eval/judge.eval.ts"
   },
   "devDependencies": {
-    "@getpaseo/plugin": "0.9.0",
-    "@getpaseo/protocol": "^0.9.0",
+    "@getpaseo/client": "^0.9.1",
+    "@getpaseo/plugin": "0.9.1",
+    "@getpaseo/protocol": "0.9.1",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^26.6.2",
     "@types/react": "~19.2.0",

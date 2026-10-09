@@ -169,3 +169,9 @@ Use "continue" only when the original agent can productively proceed now. Includ
 Conversation evidence:
 ${evidence(timeline)}`;
 }
+
+/** Operator billing policy, shared by the judge launcher and offline tests. */
+export function permitsJudgeSelection(selection: string, model: string): boolean {
+  if (!/(?:^|\/)openrouter(?:\/|$)/i.test(selection)) return true;
+  return model.endsWith(":free") || selection.endsWith("openrouter/free");
+}

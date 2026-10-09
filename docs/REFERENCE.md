@@ -1,6 +1,6 @@
 # Juke
 
-Juke is an inference-first Paseo plugin. After a completed agent turn, it launches a short-lived judge, by default on the judged agent's provider and model (the 0.9.1 snapshot can be set to a fixed judge model). The judge semantically decides whether the agent stopped early in one of two ways:
+Juke is an inference-first Paseo plugin. After a completed agent turn, it launches a short-lived judge, by default on the judged agent's provider and model (or a fixed judge model chosen in settings). The judge semantically decides whether the agent stopped early in one of two ways:
 
 - **unperformed-work**: the user wanted work and the agent ended its turn with a plan, promise, description, or status answer instead of doing it. This includes question-shaped requests and completion checks on previously requested work ("Did you fill in all the data?" → "Not yet; here's what's missing"). Genuine information-only or status-only questions are left alone.
 - **needless-permission**: the agent ended its turn asking "want me to…?" about a next step it clearly already knows, when that step serves a goal the user already stated. Legitimate questions are left alone: destructive, externally visible, or out-of-scope steps; real preference decisions; optional extras; and cases where the user said to hold off.

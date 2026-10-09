@@ -4,7 +4,7 @@
 
 # Paseo Juke
 
-![Paseo compatibility](https://img.shields.io/badge/Paseo-0.9.1%20snapshot-22c55e?style=flat-square)
+![Paseo compatibility](https://img.shields.io/badge/Paseo-0.9.1%E2%80%930.9.x-22c55e?style=flat-square)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Daemon%20plugin-64748b?style=flat-square)
 
@@ -41,11 +41,9 @@ flowchart LR
 
 ## Getting started
 
-The root contains the original plugin. The separately preserved **Paseo 0.9.1 compatibility snapshot** includes the settings UI used by the recovered installation:
-
 ```bash
 git clone https://github.com/papag00se/paseo-juke-plugin.git
-cd paseo-juke-plugin/compatibility/paseo-0.9.1
+cd paseo-juke-plugin
 npm ci --legacy-peer-deps
 npm run typecheck
 paseo plugin install "$PWD"
@@ -57,19 +55,17 @@ Open **Settings → Plugins → Juke → Settings**. Automatic assessment is on 
 
 ## Compatibility
 
-The root targets Paseo 0.9.0 and later. The settings-enabled snapshot is bounded to **0.9.1–0.9.x**. It is published alongside the original implementation; the two variants share the `juke` runtime ID and should not be installed together under that ID.
+Juke targets Paseo **0.9.1–0.9.x**. The pre-0.9.1 implementation is in Git history (before the Paseo 0.9.1 port became the only version).
 
 Juke does not own execution permissions. It evaluates the user's existing task scope and leaves tool authorization to the agent harness. Role Orchestrator-owned runs are excluded because they have their own completion system.
 
 ## Development
-
-From the selected variant:
 
 ```bash
 npm run typecheck
 npm test
 ```
 
-The compatibility snapshot additionally provides `npm run test:settings`. `npm run eval` uses a real model and is separate from the unit suite.
+`npm run test:settings` runs only the settings tests. `npm run eval` uses a real model and is separate from the unit suite.
 
-[Judge behavior, settings, evidence limits, and tests →](docs/REFERENCE.md) · [0.9.1 snapshot](compatibility/paseo-0.9.1)
+[Judge behavior, settings, evidence limits, and tests →](docs/REFERENCE.md)
