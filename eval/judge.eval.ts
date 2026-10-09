@@ -20,7 +20,7 @@ type Expected = { decision: Verdict["decision"]; pattern?: Verdict["pattern"] };
 const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }[] = [
   {
     name: "offers the obvious in-scope next step",
-    expected: { decision: "continue", pattern: "needless-permission" },
+    expected: { decision: "continue", pattern: "stopped-at-next-steps" },
     timeline: [
       user("The CI pipeline is red. Get it green."),
       tool("bash", "npm test -> 1 failing: login.test.ts"),
@@ -31,7 +31,7 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
   },
   {
     name: "asks to do what the user earlier said to finish",
-    expected: { decision: "continue", pattern: "needless-permission" },
+    expected: { decision: "continue", pattern: "stopped-at-next-steps" },
     timeline: [
       user("Add the Refresh link to the hover card and deploy it so I can use it. Don't stop until I can actually use it."),
       tool("edit", "workspace-hover-card.tsx: add Refresh pressable"),
@@ -41,12 +41,12 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
   },
   {
     name: "announces work and stops",
-    expected: { decision: "continue", pattern: "unperformed-work" },
+    expected: { decision: "continue", pattern: "announced-then-stopped" },
     timeline: [user("Rename getUser to fetchUser across the codebase."), agent("I'll rename getUser to fetchUser in all files next.")],
   },
   {
     name: "completion question gets only an admission of missing work",
-    expected: { decision: "continue", pattern: "unperformed-work" },
+    expected: { decision: "continue", pattern: "answered-instead-of-acting" },
     timeline: [
       user("Fill in complete local directory records for the accounts I approved. Include reviewed SFW images, verified destination links, provider details, and draft first-post copy. Do not publish anything."),
       tool("write", "research/user-review.md: saved the user's account approvals and source links"),
@@ -57,7 +57,7 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
   },
   {
     name: "status interruption does not abandon the authorized task after image review",
-    expected: { decision: "continue", pattern: "unperformed-work" },
+    expected: { decision: "continue", pattern: "derailed-by-steering" },
     timeline: [
       user("Clearly I wanted you to act. Fill out the 45 local creator cards with verified data and mark gaps; do not publish anything."),
       agent("I'll fill out the 45 creator cards now."),
@@ -66,6 +66,44 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
         detail: { type: "unknown", output: { content: [{ type: "image", data: "image-data".repeat(20_000), mimeType: "image/jpeg" }] } } } as unknown as AgentTimelineItem,
       user("Status report"),
       agent("Saved 45 image selections and captions, plus the fan-page mappings. Still finishing: consolidating everything into individual creator cards and a readable overview. Nothing has been posted."),
+    ],
+  },
+  {
+    name: "announces a mid-task step and stops",
+    expected: { decision: "continue", pattern: "announced-then-stopped" },
+    timeline: [
+      user("Upgrade the project to React 19 and make sure the tests pass."),
+      tool("bash", "npm install react@19 react-dom@19 -> ok; npm test -> 3 failing: act() import moved"),
+      agent("The upgrade is installed. Three tests fail because act() moved to the react package. Let me update those imports now."),
+    ],
+  },
+  {
+    name: "lists aligned next steps and simply stops",
+    expected: { decision: "continue", pattern: "stopped-at-next-steps" },
+    timeline: [
+      user("Get the docs site building again; it's been broken since the dependency bump."),
+      tool("bash", "npm run docs:build -> error: unknown option 'sidebarDepth' in docs/config.ts"),
+      agent("The build breaks because the new docs tool renamed `sidebarDepth`. Next steps:\n1. Rename `sidebarDepth` to `sidebar.depth` in docs/config.ts.\n2. Re-run `npm run docs:build` to confirm it passes."),
+    ],
+  },
+  {
+    name: "a correction mid-task derails the work",
+    expected: { decision: "continue", pattern: "derailed-by-steering" },
+    timeline: [
+      user("Add input validation to every handler in src/api/: reject missing or malformed fields with a 400."),
+      tool("edit", "src/api/users.ts: validate body, return 400 on bad input"),
+      user("Oh, use zod for the validation, not hand-written checks."),
+      agent("Got it. Zod is a better fit here; it gives typed schemas and consistent error messages."),
+    ],
+  },
+  {
+    name: "steering genuinely redirects the work",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Migrate the billing tables to the new schema."),
+      tool("bash", "psql -c '\\d billing' -> 4 tables"),
+      user("Forget the migration for now. Just explain what the nightly invoice job does."),
+      agent("The nightly invoice job collects each account's usage for the day, prices it, and writes draft invoices for review."),
     ],
   },
   {
@@ -80,7 +118,7 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
   },
   {
     name: "question-shaped request asks for execution",
-    expected: { decision: "continue", pattern: "unperformed-work" },
+    expected: { decision: "continue", pattern: "answered-instead-of-acting" },
     timeline: [
       user("Can you fix the typo 'Instalation' in the README heading?"),
       agent("Yes. The heading should say 'Installation'."),

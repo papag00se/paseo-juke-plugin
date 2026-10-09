@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
-import { evidence, isJukeFollowUp, JukeFollowUpPrefix, judgeLabels, parseVerdict } from "./judge";
+import { evidence, isJukeFollowUp, JukeFollowUpPrefix, JukePatterns, judgeLabels, judgePrompt, parseVerdict } from "./judge";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 describe("parseVerdict", () => {
@@ -41,8 +41,16 @@ describe("parseVerdict", () => {
   });
 
   it("keeps the judge's pattern classification", () => {
-    const text = '{"decision":"continue","pattern":"needless-permission","rationale":"r","followUp":"f"}';
-    expect(parseVerdict(text)?.pattern).toBe("needless-permission");
+    for (const pattern of JukePatterns) {
+      const text = `{"decision":"continue","pattern":"${pattern}","rationale":"r","followUp":"f"}`;
+      expect(parseVerdict(text)?.pattern).toBe(pattern);
+    }
+  });
+
+  // The judge can only report a juke it was told about; a label missing from the prompt is never logged.
+  it("describes every juke in the judge prompt", () => {
+    const prompt = judgePrompt([]);
+    for (const pattern of JukePatterns) expect(prompt).toContain(`${pattern}:`);
   });
 
   // pattern is logging-only; a judge inventing a label must not cost us the verdict itself.
