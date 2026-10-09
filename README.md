@@ -8,7 +8,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Daemon%20plugin-64748b?style=flat-square)
 
-[The four jukes](#the-four-jukes) · [Features](#features) · [Getting started](#getting-started) · [Compatibility](#compatibility) · [Reference](docs/REFERENCE.md)
+[The nine jukes](#the-nine-jukes) · [Features](#features) · [Getting started](#getting-started) · [Compatibility](#compatibility) · [Reference](docs/REFERENCE.md)
 
 </div>
 
@@ -16,9 +16,9 @@
 
 🧑‍⚖️ Juke catches that. After every finished turn, a short-lived judge reads what you asked and what the agent actually did. If the agent stopped short, Juke sends it back to work. If not, it stays out of the way.
 
-## The four jukes
+## The nine jukes
 
-A "juke" is an agent faking the end of a turn while work is still owed. Juke catches four kinds:
+A "juke" is an agent faking the end of a turn while work is still owed. Juke catches nine kinds:
 
 | # | Juke | Example | What Juke does |
 | --- | --- | --- | --- |
@@ -26,8 +26,13 @@ A "juke" is an agent faking the end of a turn while work is still owed. Juke cat
 | 2 | **Announced, then stopped** — the agent says it will do something, then ends its turn | *"I'll rename getUser to fetchUser everywhere next."* (nothing renamed) | Tells it to do what it announced |
 | 3 | **Stopped at next steps** — your direction is clear, the agent lists matching next steps, then asks to go ahead or just stops | *"Lint fails on an unused import. Want me to remove it?"* | Tells it to take those steps |
 | 4 | **Derailed by steering** — you nudge the agent mid-task and it drops the task | *"Use zod for validation."* → *"Got it, zod is a better fit."* (task abandoned) | Tells it to apply your nudge and finish the task |
+| 5 | **Claimed done, but isn't** — the agent says "done" after doing less than you asked | Fixed 2 of 4 folders, or *"tests should pass now"* without running them | Names what's missing or unchecked |
+| 6 | **Made-up blocker** — the agent hits one obstacle and says it's stuck | *"The generator isn't installed, so I can't continue."* (it's a project dependency) | Points to a way around it |
+| 7 | **Asked what it could find** — the agent asks you something it could look up | *"Which port does the server use?"* (it's in the config file) | Tells it where to look, then to carry on |
+| 8 | **Handed the work back** — the agent tells you to do steps it could do itself | *"To finish, run `npm run migrate`."* | Tells it to run those steps |
+| 9 | **Paused on its own** — nothing blocks it, but the agent stops partway | *"This is a long job, so I'll pause here."* (12 of 40 done) | Tells it to finish; long jobs are normal |
 
-Juke leaves the agent alone when you only asked a question, asked for a plan or a status-only answer, said to hold off, or truly changed direction. It also stays out when the work is done or blocked, when the choice is genuinely yours, or when the next step is risky or out of scope (deleting, publishing, spending money).
+Juke leaves the agent alone when you only asked a question, asked for a plan or a status-only answer, said to hold off, asked for a checkpoint, or truly changed direction. It also stays out when the work is really done or really blocked, when only you have the answer or the access (a password, your account, a choice of approach), or when the next step is risky or out of scope (deleting, publishing, spending money).
 
 The names above appear in the plugin's **Logs** with each verdict. [Exact judging rules →](docs/REFERENCE.md)
 
@@ -36,7 +41,7 @@ The names above appear in the plugin's **Logs** with each verdict. [Exact judgin
 | Feature | What you get |
 | --- | --- |
 | 🧠 Semantic review | A model judges intent and follow-through, not a keyword score |
-| 🎯 Four jukes | Each common way an agent stops early, below |
+| 🎯 Nine jukes | Each common way an agent stops early, above |
 | 🚧 Clear boundaries | Real questions, genuine blockers and unauthorized actions are left alone |
 | ⚖️ Your choice of judge | Reuse the judged agent's model, or pick a provider, model and reasoning level |
 | 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and Role Orchestrator runs are skipped |

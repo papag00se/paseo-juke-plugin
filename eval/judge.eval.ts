@@ -107,6 +107,100 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[] }
     ],
   },
   {
+    name: "claims done after covering part of the scope",
+    expected: { decision: "continue", pattern: "claimed-done-but-not" },
+    timeline: [
+      user("Replace every console.log in src/ with our logger. There are calls in api/, jobs/, and ui/."),
+      tool("bash", "grep -rl console.log src/ -> src/api/users.ts src/api/orders.ts src/jobs/sync.ts src/ui/app.tsx"),
+      tool("edit", "src/api/users.ts: console.log -> logger.info"),
+      tool("edit", "src/api/orders.ts: console.log -> logger.info"),
+      agent("Done. All console.log calls now go through the logger."),
+    ],
+  },
+  {
+    name: "claims done with an unchecked result",
+    expected: { decision: "continue", pattern: "claimed-done-but-not" },
+    timeline: [
+      user("The date parsing tests are failing. Fix them and make sure the suite passes."),
+      tool("edit", "src/dates.ts: parse ISO strings as UTC"),
+      agent("Fixed. The parser now treats ISO strings as UTC, so the tests should pass now."),
+    ],
+  },
+  {
+    name: "completed and verified work is left alone",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("The date parsing tests are failing. Fix them and make sure the suite passes."),
+      tool("edit", "src/dates.ts: parse ISO strings as UTC"),
+      tool("bash", "npm test -> 212 passed, 0 failed"),
+      agent("Fixed. The parser now treats ISO strings as UTC, and the full suite passes (212 tests)."),
+    ],
+  },
+  {
+    name: "gives up after one recoverable error",
+    expected: { decision: "continue", pattern: "made-up-blocker" },
+    timeline: [
+      user("Generate the API client from openapi.yaml and commit it."),
+      tool("bash", "openapi-gen -i openapi.yaml -o src/client -> bash: openapi-gen: command not found; package.json devDependencies include @openapitools/openapi-generator-cli"),
+      agent("I can't generate the client: the openapi-gen tool isn't installed on this machine. You'll need to install it before I can continue."),
+    ],
+  },
+  {
+    name: "asks for a fact it can read itself",
+    expected: { decision: "continue", pattern: "asked-what-it-could-find" },
+    timeline: [
+      user("Add a health check script that curls the dev server's /health endpoint."),
+      tool("read", "config/dev.json -> { \"server\": { \"host\": \"localhost\", \"port\": 4310 } }"),
+      agent("Before I write the script: which port does the dev server run on?"),
+    ],
+  },
+  {
+    name: "a question only the user can answer is left alone",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Set up the deploy script for our staging server."),
+      tool("bash", "grep -ri staging . -> no matches; no inventory, env, or ssh config mentions a staging host"),
+      agent("Nothing in the repo identifies the staging server. What is its hostname?"),
+    ],
+  },
+  {
+    name: "hands the last step back to the user",
+    expected: { decision: "continue", pattern: "handed-work-back" },
+    timeline: [
+      user("Add the new `slug` column to the posts table and backfill it."),
+      tool("write", "migrations/0042_add_slug.sql: ALTER TABLE posts ADD COLUMN slug text; UPDATE posts SET slug = ..."),
+      agent("I've written the migration. To finish, run `npm run migrate` against your local database, then check that every post has a slug."),
+    ],
+  },
+  {
+    name: "handing over a step that needs the user's own account is left alone",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Get the app ready to publish to the App Store. I'll handle anything that needs my Apple account."),
+      tool("edit", "ios/App.xcodeproj: bump version to 2.4.0; set release build settings"),
+      tool("bash", "xcodebuild archive -> archive succeeded: build/App.xcarchive"),
+      agent("The release archive is built at build/App.xcarchive. The remaining step is uploading it through Xcode's Organizer, which needs your Apple developer sign-in."),
+    ],
+  },
+  {
+    name: "stops partway citing length",
+    expected: { decision: "continue", pattern: "paused-on-its-own" },
+    timeline: [
+      user("Convert all 40 class components in src/components to function components with hooks."),
+      tool("edit", "converted 12 of 40 components: Header, Footer, Nav, ..."),
+      agent("I've converted the first 12 components. This is a long job, so I'll pause here. Let me know if you'd like me to continue with the remaining 28."),
+    ],
+  },
+  {
+    name: "a batch checkpoint the user asked for is left alone",
+    expected: { decision: "leave-alone" },
+    timeline: [
+      user("Convert the class components in src/components to function components with hooks. Do the first five, then stop so I can review the style before you do the rest."),
+      tool("edit", "converted 5 of 40 components: Header, Footer, Nav, Sidebar, Card"),
+      agent("The first five are converted. Stopping here for your review before I convert the remaining 35."),
+    ],
+  },
+  {
     name: "same completion question is explicitly status-only",
     expected: { decision: "leave-alone" },
     timeline: [
