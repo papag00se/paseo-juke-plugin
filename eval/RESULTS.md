@@ -1,6 +1,6 @@
 # Juke judge eval results
 
-Run on 2026-10-09 with `npm run eval` over the 108 cases in `eval/cases.ts`.
+Run on 2026-10-09 with `npm run eval` over the 112 cases in `eval/cases.ts`.
 "Right decision" means Juke would have sent the agent back, or left it alone,
 exactly when it should. "Right juke" also checks which juke it reported.
 
@@ -8,9 +8,9 @@ exactly when it should. "Right juke" also checks which juke it reported.
 
 | Judge model | Runs per case | Right decision | Right decision and juke |
 | --- | --- | --- | --- |
-| `anthropic/claude-opus-5-5` (default) | 3 | 324/324 | 324/324 |
-| `openai-codex/gpt-6.1-sol` | 3 | 324/324 | 324/324 |
-| `anthropic/claude-haiku-5-5` | 1 | 105/108 | 105/108 |
+| `anthropic/claude-opus-5-5` (default) | 3 | 336/336 | 336/336 |
+| `openai-codex/gpt-6.1-sol` | 3 | 336/336 | 336/336 |
+| `anthropic/claude-haiku-5-5` (earlier 108-case run, before the steer change) | 1 | 105/108 | 105/108 |
 
 ## What the tests found, and what changed
 
@@ -25,16 +25,20 @@ exactly when it should. "Right juke" also checks which juke it reported.
 2. **A correct reply was thrown away.** Judges sometimes spell out unused
    fields as `null` (`"followUp": null`) on a leave-alone verdict. Juke
    rejected that as unreadable and asked again. It is now accepted.
-3. **Steers: acknowledged and dropped, or a bare status check.** With the
-   steer juke off, an agent that only acknowledged an added requirement
-   ("Good call") and stopped was still reported as "Answered instead of doing
-   the work". GPT-6.1 Sol also read a bare "Status report" as a request for
-   status only. The steer rule now says it covers an agent that only
-   acknowledges the steer, and that a bare status check is not a request to
-   stop. Which steers count is unchanged.
+3. **Steers are almost never stops.** GPT-6.1 Sol read a bare "Status
+   report" steer as a request for status only and left the task unfinished.
+   Since the user has a stop button, the steer rule now says status checks and
+   questions sent as steers ("Status report", "just tell me where you are",
+   "how's it going?") never mean stop. Only a steer that explicitly says to
+   stop or hold, or that redirects to different work, is left alone. The rule
+   also says it covers an agent that only acknowledges the steer. Which steers
+   count is unchanged.
 4. **Test fixes.** One case accepted only one juke where two honestly fit
    (an agent that gives up and asks where a file is). One case didn't make
-   clear that work remained. Both are fixed.
+   clear that work remained. Both are fixed. With the steer juke off, an
+   agent that only acknowledges an added requirement may still be caught as
+   "Answered instead of doing the work", since the requirement is itself a
+   work request; that case now accepts either outcome.
 
 ## Known limits
 
@@ -43,6 +47,9 @@ exactly when it should. "Right juke" also checks which juke it reported.
   one switch case, it reported a turned-off juke's stop under another juke
   that was still on, which Juke can't catch. Use a strong judge model, or
   keep *Same as the agent being judged* with strong agents.
+- **One flaky switch case.** In one of three runs, with the steer juke off,
+  Opus reported "Nice, this is much easier to read" + "Thanks!" under another
+  juke. It passed on the final run.
 - These are synthetic conversations. Real sessions are longer and messier.
 
 ## Full reports
@@ -50,9 +57,9 @@ exactly when it should. "Right juke" also checks which juke it reported.
 ### `anthropic/claude-opus-5-5`, 3 runs per case
 
 - Model: `anthropic/claude-opus-5-5`
-- Cases: 108, each run 3 time(s): 324 verdicts
-- Right decision: 324/324
-- Right decision and right juke: 324/324
+- Cases: 112, each run 3 time(s): 336 verdicts
+- Right decision: 336/336
+- Right decision and right juke: 336/336
 - Unreadable replies: 0
 
 | Group | Right decision | Right decision and juke |
@@ -60,23 +67,23 @@ exactly when it should. "Right juke" also checks which juke it reported.
 | stopped-at-next-steps | 24/24 | 24/24 |
 | announced-then-stopped | 21/21 | 21/21 |
 | answered-instead-of-acting | 24/24 | 24/24 |
-| derailed-by-steering | 21/21 | 21/21 |
+| derailed-by-steering | 27/27 | 27/27 |
 | boundaries | 42/42 | 42/42 |
 | claimed-done-but-not | 21/21 | 21/21 |
 | made-up-blocker | 18/18 | 18/18 |
 | asked-what-it-could-find | 18/18 | 18/18 |
 | handed-work-back | 18/18 | 18/18 |
 | paused-on-its-own | 15/15 | 15/15 |
-| switches | 102/102 | 102/102 |
+| switches | 108/108 | 108/108 |
 
 #### Misses
 
 ### `openai-codex/gpt-6.1-sol`, 3 runs per case
 
 - Model: `openai-codex/gpt-6.1-sol`
-- Cases: 108, each run 3 time(s): 324 verdicts
-- Right decision: 324/324
-- Right decision and right juke: 324/324
+- Cases: 112, each run 3 time(s): 336 verdicts
+- Right decision: 336/336
+- Right decision and right juke: 336/336
 - Unreadable replies: 0
 
 | Group | Right decision | Right decision and juke |
@@ -84,18 +91,18 @@ exactly when it should. "Right juke" also checks which juke it reported.
 | stopped-at-next-steps | 24/24 | 24/24 |
 | announced-then-stopped | 21/21 | 21/21 |
 | answered-instead-of-acting | 24/24 | 24/24 |
-| derailed-by-steering | 21/21 | 21/21 |
+| derailed-by-steering | 27/27 | 27/27 |
 | boundaries | 42/42 | 42/42 |
 | claimed-done-but-not | 21/21 | 21/21 |
 | made-up-blocker | 18/18 | 18/18 |
 | asked-what-it-could-find | 18/18 | 18/18 |
 | handed-work-back | 18/18 | 18/18 |
 | paused-on-its-own | 15/15 | 15/15 |
-| switches | 102/102 | 102/102 |
+| switches | 108/108 | 108/108 |
 
 #### Misses
 
-### `anthropic/claude-haiku-5-5`, 1 run per case
+### `anthropic/claude-haiku-5-5`, 1 run per case (earlier 108-case run, before the steer change)
 
 - Model: `anthropic/claude-haiku-5-5`
 - Cases: 108, each run 1 time(s): 108 verdicts

@@ -87,6 +87,6 @@ npm run typecheck
 npm test
 ```
 
-`npm run test:settings` runs only the settings tests. `npm run eval` checks the judge against 108 example conversations on a real model, including ones built to trick it; it is separate from the unit suite. [Latest results →](eval/RESULTS.md)
+`npm run test:settings` runs only the settings tests. `npm run eval` checks the judge against 112 example conversations on a real model, including ones built to trick it; it is separate from the unit suite. [Latest results →](eval/RESULTS.md)
 
 [Judge behavior, settings, evidence limits, and tests →](docs/REFERENCE.md)

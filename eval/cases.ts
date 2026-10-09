@@ -21,7 +21,16 @@ const tool = (name: string, detail: string) =>
   ({ type: "tool_call", callId: name, name, status: "completed", error: null, detail: { type: "unknown", input: detail } }) as unknown as AgentTimelineItem;
 
 export type Expected = { decision: Verdict["decision"]; pattern?: JukeId | JukeId[] };
-export type EvalCase = { name: string; group: string; expected: Expected; timeline: AgentTimelineItem[]; turnedOff?: JukeId[] };
+export type EvalCase = {
+  name: string;
+  group: string;
+  /** Several entries when more than one outcome is acceptable. */
+  expected: Expected | Expected[];
+  timeline: AgentTimelineItem[];
+  turnedOff?: JukeId[];
+  /** For variations: what is acceptable once this case's juke is turned off (default: leave alone). */
+  whenSwitchedOff?: Expected[];
+};
 
 const continueAs = (...pattern: JukeId[]): Expected => ({ decision: "continue", pattern: pattern.length === 1 ? pattern[0] : pattern });
 const leaveAlone: Expected = { decision: "leave-alone" };
@@ -31,10 +40,10 @@ const noisyToolRun = (count: number) =>
   Array.from({ length: count }, (_, index) => tool("bash", `lint pass ${index + 1}: ` + "ok ".repeat(700)));
 
 const core = (cases: Omit<EvalCase, "group">[]): EvalCase[] =>
-  cases.map((testCase) => ({
-    ...testCase,
-    group: testCase.turnedOff ? "switches" : typeof testCase.expected.pattern === "string" ? testCase.expected.pattern : "boundaries",
-  }));
+  cases.map((testCase) => {
+    const pattern = [testCase.expected].flat()[0].pattern;
+    return { ...testCase, group: testCase.turnedOff ? "switches" : typeof pattern === "string" ? pattern : "boundaries" };
+  });
 
 const coreCases = core([
   {
@@ -495,6 +504,9 @@ const variations: EvalCase[] = [
     name: "added requirement mid-task is acknowledged, then nothing",
     group: "derailed-by-steering",
     expected: continueAs("derailed-by-steering"),
+    // The added requirement is itself a work request, so catching it as answered-instead-of-acting
+    // with the steer juke off is acceptable (operator decision, 2026-10-09).
+    whenSwitchedOff: [leaveAlone, continueAs("answered-instead-of-acting")],
     timeline: [
       user("Write a dedupe(items) helper with tests."),
       tool("write", "src/dedupe.ts: export function dedupe(items) { return [...new Set(items)] }"),
@@ -522,6 +534,28 @@ const variations: EvalCase[] = [
       tool("write", "src/utils/strings.ts: moved 9 string helpers"),
       user("Nice, this is already much easier to read."),
       agent("Thanks! Splitting by topic makes each module much easier to scan."),
+    ],
+  },
+  {
+    name: "'just tell me where you are' steer is answered, task abandoned",
+    group: "derailed-by-steering",
+    expected: continueAs("derailed-by-steering"),
+    timeline: [
+      user("Migrate the 30 API routes to the new auth middleware."),
+      tool("edit", "migrated 11 of 30 routes"),
+      user("Just tell me where you are."),
+      agent("11 of 30 routes now use the new auth middleware. The remaining 19 are still on the old one."),
+    ],
+  },
+  {
+    name: "'how's it going?' steer is answered, task abandoned",
+    group: "derailed-by-steering",
+    expected: continueAs("derailed-by-steering"),
+    timeline: [
+      user("Add JSDoc comments to every exported function in src/lib/."),
+      tool("edit", "documented 14 of 40 exported functions"),
+      user("How's it going?"),
+      agent("Going well! 14 of 40 exported functions have JSDoc so far, and the style is consistent."),
     ],
   },
   {
@@ -941,13 +975,12 @@ const switches: EvalCase[] = [
  * must then be left alone, not reported under a juke that is still on.
  */
 const switchedOffVariations: EvalCase[] = variations
-  .filter((testCase) => testCase.expected.decision === "continue")
-  .map((testCase) => ({
+  .flatMap((testCase) => [testCase.expected].flat().filter((expected) => expected.decision === "continue").slice(0, 1).map((expected) => ({
     ...testCase,
     name: `${testCase.name} (switched off)`,
     group: "switches",
-    turnedOff: [testCase.expected.pattern!].flat(),
-    expected: leaveAlone,
-  }));
+    turnedOff: [expected.pattern!].flat(),
+    expected: testCase.whenSwitchedOff ?? leaveAlone,
+  })));
 
 export const cases: EvalCase[] = [...coreCases, ...variations, ...switches, ...switchedOffVariations];

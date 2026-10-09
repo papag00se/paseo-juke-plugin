@@ -55,12 +55,18 @@ function judge(testCase: EvalCase): Promise<Run> {
   });
 }
 
-const decisionOk = (c: EvalCase, run: Run) => run.verdict?.decision === c.expected.decision;
-function patternOk(c: EvalCase, run: Run): boolean {
-  const expected = c.expected.pattern;
-  if (!decisionOk(c, run) || c.expected.decision !== "continue" || expected === undefined) return decisionOk(c, run);
-  return [expected].flat().includes(run.verdict!.pattern!);
-}
+const decisionOk = (c: EvalCase, run: Run) => [c.expected].flat().some((expected) => run.verdict?.decision === expected.decision);
+const patternOk = (c: EvalCase, run: Run) =>
+  [c.expected].flat().some(
+    (expected) =>
+      run.verdict?.decision === expected.decision &&
+      (expected.decision !== "continue" || expected.pattern === undefined || [expected.pattern].flat().includes(run.verdict.pattern!)),
+  );
+const describeExpected = (c: EvalCase) =>
+  [c.expected]
+    .flat()
+    .map((expected) => `${expected.decision}${expected.pattern ? `/${[expected.pattern].flat().join(" or ")}` : ""}`)
+    .join(" or ");
 const describe = (run: Run) => (run.verdict ? `${run.verdict.decision}/${run.verdict.pattern ?? "-"}` : "unreadable");
 
 async function main() {
@@ -112,9 +118,8 @@ async function main() {
     ...outcomes
       .filter((o) => o.runs.some((r) => !patternOk(o.testCase, r)))
       .flatMap((o) => {
-        const expected = `${o.testCase.expected.decision}${o.testCase.expected.pattern ? `/${[o.testCase.expected.pattern].flat().join(" or ")}` : ""}`;
         return [
-          `- **${o.testCase.name}** (${o.testCase.group}): expected ${expected}; got ${o.runs.map(describe).join(", ")}`,
+          `- **${o.testCase.name}** (${o.testCase.group}): expected ${describeExpected(o.testCase)}; got ${o.runs.map(describe).join(", ")}`,
           ...o.runs.filter((r) => !patternOk(o.testCase, r)).map((r) => `  - ${(r.verdict?.rationale ?? r.raw).replace(/\s+/g, " ")}`),
         ];
       }),
