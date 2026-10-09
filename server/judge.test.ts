@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { isDelegatedAgent } from "@getpaseo/protocol/agent-labels";
 import { evidence, isJukeFollowUp, JukeFollowUpPrefix, judgeLabels, judgePrompt, parseVerdict } from "./judge";
-import { JukeIds } from "../shared/jukes";
+import { JukeIds, Jukes } from "../shared/jukes";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 
 describe("parseVerdict", () => {
@@ -59,7 +59,8 @@ describe("parseVerdict", () => {
   it("judges only enabled jukes and names the turned-off ones as acceptable", () => {
     const prompt = judgePrompt([], JukeIds.filter((id) => id !== "paused-on-its-own"));
     expect(prompt).not.toContain("paused-on-its-own:");
-    expect(prompt).toMatch(/turned off these checks[^\n]*paused-on-its-own/);
+    // Described in full, not just named, so the judge recognizes the behavior it must accept.
+    expect(prompt).toContain(`- paused-on-its-own (turned off): ${Jukes.find((juke) => juke.id === "paused-on-its-own")!.rule}`);
     expect(prompt).not.toMatch(/"pattern":[^\n]*paused-on-its-own/);
   });
 
@@ -67,6 +68,20 @@ describe("parseVerdict", () => {
   it("rejects a continue without a known pattern", () => {
     expect(parseVerdict('{"decision":"continue","rationale":"r","followUp":"f"}')).toBeNull();
     expect(parseVerdict('{"decision":"continue","pattern":"other","rationale":"r","followUp":"f"}')).toBeNull();
+  });
+
+  // Seen in the live eval: judges write unused fields as null, which used to make the verdict unreadable.
+  it("accepts a leave-alone that spells out unused fields as null", () => {
+    expect(parseVerdict('{"decision":"leave-alone","rationale":"r","pattern":null,"followUp":null}')?.decision).toBe("leave-alone");
+    expect(parseVerdict('{"decision":"leave-alone","rationale":null}')?.decision).toBe("leave-alone");
+  });
+
+  // Every juke can be turned off on its own: it leaves the list of checks and is described as accepted.
+  it.each(JukeIds)("turning off %s alone moves it from the checks to the accepted behavior", (id) => {
+    const prompt = judgePrompt([], JukeIds.filter((other) => other !== id));
+    expect(prompt).not.toMatch(new RegExp(`^\\d+\\. ${id}:`, "m"));
+    expect(prompt).toContain(`- ${id} (turned off):`);
+    for (const other of JukeIds.filter((other) => other !== id)) expect(prompt).toMatch(new RegExp(`^\\d+\\. ${other}:`, "m"));
   });
 
   // On a leave-alone the pattern changes nothing, so an invented label must not cost the verdict.

@@ -80,6 +80,19 @@ test("a turned-off juke is left out of the judge prompt and its continuation is 
   assert.deepEqual(h.archived, ["judge"]);
 });
 
+test("for every juke, turning it off alone blocks its continuation and keeps the others", async t => {
+  const { JukeIds } = await import("../shared/jukes.ts");
+  for (const id of JukeIds) {
+    const off = setup(t, { judgeValues: { disabledJukes: [id] }, result: continueAs(id) }); await off.fire();
+    assert.deepEqual(off.sent, [], `${id} continuation was sent while turned off`);
+    off.stop();
+    const other = JukeIds.find(candidate => candidate !== id);
+    const on = setup(t, { judgeValues: { disabledJukes: [id] }, result: continueAs(other) }); await on.fire();
+    assert.equal(on.sent.length, 1, `${other} continuation was blocked by turning off ${id}`);
+    on.stop();
+  }
+});
+
 test("a continuation for a juke that is still on is sent", async t => {
   const h = setup(t, { judgeValues: { disabledJukes: ["announced-then-stopped"] }, result: continueAs("paused-on-its-own") }); await h.fire();
   assert.equal(h.sent.length, 1);

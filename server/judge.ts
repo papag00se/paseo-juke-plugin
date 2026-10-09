@@ -30,8 +30,9 @@ const verdictSchema = z.discriminatedUnion("decision", [
   z.object({
     decision: z.literal("leave-alone"),
     pattern: z.enum(JukeIds).optional().catch(undefined),
-    rationale: z.string().max(2_000).optional(),
-    followUp: z.string().max(4_000).optional(),
+    // Judges often spell out unused fields as null; a leave-alone needs neither, so accept that.
+    rationale: z.string().max(2_000).nullish(),
+    followUp: z.string().max(4_000).nullish(),
   }),
 ]);
 
@@ -148,15 +149,19 @@ export function evidence(timeline: readonly AgentTimelineItem[]): string {
   return JSON.stringify({ omittedItems: timeline.length - selected.length, items: selected.map(({ item }) => item) });
 }
 
-/** The judge only considers the jukes the user left on and is told the others are allowed. */
+/**
+ * The judge checks for the jukes the user left on. Turned-off jukes are described in full as
+ * accepted behavior: given only their names, the judge did not recognize the behavior and
+ * reported the same stop under a juke that was still on.
+ */
 export function judgePrompt(timeline: readonly AgentTimelineItem[], enabled: readonly JukeId[] = JukeIds): string {
   const active = Jukes.filter((juke) => enabled.includes(juke.id));
   const checks = active
     .map((juke, index) => `${index + 1}. ${juke.id}: ${juke.rule}${"followUp" in juke ? ` Follow-up: ${juke.followUp}` : ""}`)
     .join("\n\n");
-  const allowed = Jukes.filter((juke) => !enabled.includes(juke.id)).map((juke) => juke.id);
+  const allowed = Jukes.filter((juke) => !enabled.includes(juke.id));
   const allowedNote = allowed.length
-    ? `\n\nThe user turned off these checks, so these behaviors are acceptable and must not cause a "continue", under any pattern: ${allowed.join(", ")}.`
+    ? `\n\nThe user turned off the checks below, so the behavior each describes is acceptable. If the agent's stop matches one of them, choose "leave-alone", even if the same stop could also be read as one of the checks above. Choose "continue" only for a separate, distinct problem that a check above covers on its own.\n\n${allowed.map((juke) => `- ${juke.id} (turned off): ${juke.rule}`).join("\n\n")}`
     : "";
   return `You are Juke, an inference-based quality judge for a coding agent. Assess the conversation evidence below and decide whether the agent ended its latest turn prematurely in any of these ways:
 

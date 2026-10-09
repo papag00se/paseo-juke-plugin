@@ -27,7 +27,7 @@ export const Jukes = [
     id: "derailed-by-steering",
     title: "Dropped the task after your steer",
     example: `You: "Use tabs, not spaces." Agent: "Got it!" Then it stops working.`,
-    rule: `The agent was doing authorized work, the user sent a steering message mid-task (a status check, a correction, an added detail or requirement, a side question, or a comment), and the agent handled only that message and abandoned the outstanding task. Steering refines or interrupts the work; it does not cancel it. The agent should address the steering message and then continue the original task, adjusted as directed. This does not apply when the steering actually redirected the agent to different work, asked for a pause, or asked for a status-only or answer-only response.`,
+    rule: `The agent was doing authorized work, the user sent a steering message mid-task (a status check, a correction, an added detail or requirement, a side question, or a comment), and the agent handled only that message, or merely acknowledged it, and abandoned the outstanding task. Steering refines or interrupts the work; it does not cancel it. The agent should address the steering message and then continue the original task, adjusted as directed. This does not apply when the steering actually redirected the agent to different work, asked for a pause, or explicitly asked for only a status or an answer ("just tell me where you are", "don't continue yet"). A bare status check such as "status?" or "Status report" is not, by itself, a request to stop.`,
     followUp: "Tell the agent to resume the original task with the user's steering applied.",
   },
   {

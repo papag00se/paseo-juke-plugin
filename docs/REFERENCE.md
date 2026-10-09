@@ -46,12 +46,33 @@ npm run typecheck
 npm test
 ```
 
-`npm run eval` runs the judge prompt against a real model (default
-`anthropic/claude-opus-5-5`, override with `JUKE_EVAL_MODEL`) over synthetic
-transcripts for every juke, including indirect requests and completion checks,
-and the cases that must be left alone (status-only questions, completed work,
-real blockers, unauthorized publishing, verified completion, questions only the user can answer, handovers needing the user's account, and checkpoints the user asked for). It costs
-inference, so run it whenever the prompt changes rather than on every test run.
+`npm run eval` runs the judge prompt against a real model over the synthetic
+conversations in `eval/cases.ts`. It costs inference, so run it whenever the
+prompt or a juke's rule changes rather than on every test run. The cases come
+in three kinds:
 
-The suite covers verdict recovery from prose/fenced replies, the self-trigger
-guard, and the role-ownership ancestry walk (including cycles and depth bounds).
+- **core**: the original example of each juke, and the boundaries Juke must
+  respect (status-only questions, completed work, real blockers, unauthorized
+  publishing, preference decisions, checkpoints the user asked for);
+- **variations**: several phrasings of each juke, plus look-alikes built to
+  trick the judge in either direction;
+- **switches**: stops with their juke turned off, which must be left alone, and
+  every "send it back" variation repeated with its juke turned off, so a stop
+  can't slip through under a juke that's still on.
+
+```bash
+npm run eval                              # every case once, default model
+npm run eval -- --repeat 3                # each case three times, to expose flaky verdicts
+npm run eval -- --only switches           # cases whose name or group contains the text
+npm run eval -- --model openai-codex/gpt-6.1-sol
+npm run eval -- --report eval/RESULTS.md  # also write a markdown report
+```
+
+The decision (send back or leave alone) and the juke label are scored
+separately. Where a stop honestly fits two jukes, a case accepts either.
+Latest results and what they changed are in `eval/RESULTS.md`.
+
+The unit suite covers verdict parsing (prose, fences, and null fields), the
+self-trigger guard, the role-ownership ancestry walk (including cycles and
+depth bounds), and, for every juke, that turning it off removes it from the
+prompt's checks, describes it as accepted behavior, and blocks its follow-up.
