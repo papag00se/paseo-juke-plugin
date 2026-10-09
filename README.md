@@ -22,19 +22,19 @@ A "juke" is an agent faking the end of a turn while work is still owed. Juke cat
 
 | # | Juke | Example | What Juke does |
 | --- | --- | --- | --- |
-| 1 | **Answered instead of acting** — you wanted work done, the agent treated it as a question | *"Can you fix the typo?"* → *"Yes, it should say 'Installation'."* | Tells it to make the fix |
-| 2 | **Announced, then stopped** — the agent says it will do something, then ends its turn | *"I'll rename getUser to fetchUser everywhere next."* (nothing renamed) | Tells it to do what it announced |
-| 3 | **Stopped at next steps** — your direction is clear, the agent lists matching next steps, then asks to go ahead or just stops | *"Lint fails on an unused import. Want me to remove it?"* | Tells it to take those steps |
-| 4 | **Derailed by steering** — you nudge the agent mid-task and it drops the task | *"Use zod for validation."* → *"Got it, zod is a better fit."* (task abandoned) | Tells it to apply your nudge and finish the task |
-| 5 | **Claimed done, but isn't** — the agent says "done" after doing less than you asked | Fixed 2 of 4 folders, or *"tests should pass now"* without running them | Names what's missing or unchecked |
-| 6 | **Made-up blocker** — the agent hits one obstacle and says it's stuck | *"The generator isn't installed, so I can't continue."* (it's a project dependency) | Points to a way around it |
-| 7 | **Asked what it could find** — the agent asks you something it could look up | *"Which port does the server use?"* (it's in the config file) | Tells it where to look, then to carry on |
-| 8 | **Handed the work back** — the agent tells you to do steps it could do itself | *"To finish, run `npm run migrate`."* | Tells it to run those steps |
-| 9 | **Paused on its own** — nothing blocks it, but the agent stops partway | *"This is a long job, so I'll pause here."* (12 of 40 done) | Tells it to finish; long jobs are normal |
+| 1 | **Answered instead of doing the work** — you wanted work done, the agent treated it as a question | *"Can you fix the typo?"* → *"Yes, it should say 'Installation'."* | Tells it to make the fix |
+| 2 | **Said it would do it, then stopped** — the agent says it will do something, then ends its turn | *"I'll rename getUser to fetchUser everywhere next."* (nothing renamed) | Tells it to do what it announced |
+| 3 | **Stopped at obvious next steps** — your direction is clear, the agent lists matching next steps, then asks to go ahead or just stops | *"Lint fails on an unused import. Want me to remove it?"* | Tells it to take those steps |
+| 4 | **Dropped the task after your steer** — it answers your mid-task steer, then abandons the work | *"Use zod for validation."* → *"Got it, zod is a better fit."* (task abandoned) | Tells it to apply your steer and finish the task |
+| 5 | **Said it was done when it wasn't** — the agent says "done" after doing less than you asked | Fixed 2 of 4 folders, or *"tests should pass now"* without running them | Names what's missing or unchecked |
+| 6 | **Gave up at the first obstacle** — the agent hits one obstacle and says it's stuck | *"The generator isn't installed, so I can't continue."* (it's a project dependency) | Points to a way around it |
+| 7 | **Asked something it could look up** — the answer was already in the chat or the files | *"Which port does the server use?"* (it's in the config file) | Tells it where to look, then to carry on |
+| 8 | **Told you to do its work** — the agent tells you to do steps it could do itself | *"To finish, run `npm run migrate`."* | Tells it to run those steps |
+| 9 | **Paused for no reason** — nothing blocks it, but the agent stops partway | *"This is a long job, so I'll pause here."* (12 of 40 done) | Tells it to finish; long jobs are normal |
 
 Juke leaves the agent alone when you only asked a question, asked for a plan or a status-only answer, said to hold off, asked for a checkpoint, or truly changed direction. It also stays out when the work is really done or really blocked, when only you have the answer or the access (a password, your account, a choice of approach), or when the next step is risky or out of scope (deleting, publishing, spending money).
 
-The names above appear in the plugin's **Logs** with each verdict. [Exact judging rules →](docs/REFERENCE.md)
+Each juke has a switch with the same title in settings. Logs show its short id (for example `derailed-by-steering`). [Exact judging rules →](docs/REFERENCE.md)
 
 ## Features
 

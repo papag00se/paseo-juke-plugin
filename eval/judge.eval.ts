@@ -57,7 +57,7 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[]; 
     ],
   },
   {
-    name: "status interruption does not abandon the authorized task after image review",
+    name: "a status steer does not abandon the authorized task after image review",
     expected: { decision: "continue", pattern: "derailed-by-steering" },
     timeline: [
       user("Clearly I wanted you to act. Fill out the 45 local creator cards with verified data and mark gaps; do not publish anything."),
@@ -88,7 +88,7 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[]; 
     ],
   },
   {
-    name: "a correction mid-task derails the work",
+    name: "a steer mid-task derails the work",
     expected: { decision: "continue", pattern: "derailed-by-steering" },
     timeline: [
       user("Add input validation to every handler in src/api/: reject missing or malformed fields with a 400."),
@@ -98,7 +98,7 @@ const cases: { name: string; expected: Expected; timeline: AgentTimelineItem[]; 
     ],
   },
   {
-    name: "steering genuinely redirects the work",
+    name: "a steer that genuinely redirects the work",
     expected: { decision: "leave-alone" },
     timeline: [
       user("Migrate the billing tables to the new schema."),
@@ -320,8 +320,11 @@ function judge(timeline: AgentTimelineItem[], turnedOff: readonly JukeId[] = [])
   return verdict;
 }
 
+// JUKE_EVAL_ONLY=<text> runs only the cases whose name contains that text.
+const only = process.env.JUKE_EVAL_ONLY;
+const selected = only ? cases.filter((testCase) => testCase.name.includes(only)) : cases;
 let failures = 0;
-for (const testCase of cases) {
+for (const testCase of selected) {
   const verdict = judge(testCase.timeline, testCase.turnedOff);
   const ok =
     verdict?.decision === testCase.expected.decision &&
@@ -330,5 +333,5 @@ for (const testCase of cases) {
   console.log(`${ok ? "PASS" : "FAIL"}  ${testCase.name}`);
   console.log(`      got ${verdict ? `${verdict.decision}/${verdict.pattern ?? "-"}: ${verdict.rationale}` : "no parseable verdict"}`);
 }
-console.log(`\n${cases.length - failures}/${cases.length} passed (${model})`);
+console.log(`\n${selected.length - failures}/${selected.length} passed (${model})`);
 process.exit(failures ? 1 : 0);
