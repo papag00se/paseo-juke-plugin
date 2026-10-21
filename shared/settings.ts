@@ -1,12 +1,14 @@
 import { defineSettings } from "@getpaseo/plugin";
 import { z } from "zod";
 import { JukeIds, type JukeId } from "./jukes";
+import { DefaultJudgePrompt, JudgePromptLimit } from "./prompt";
 
 // An empty judge provider means "judge with the same provider and model as the agent being judged".
 export const preferences = defineSettings({
   id: "juke", scope: "host", version: 1,
   schema: z.object({
     enabled: z.boolean().default(true),
+    judgePrompt: z.string().trim().min(1).max(JudgePromptLimit).default(DefaultJudgePrompt),
     judgeProvider: z.string().default(""),
     judgeModel: z.string().default(""),
     judgeThinkingOptionId: z.string().nullable().default(null),

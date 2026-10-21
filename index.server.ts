@@ -23,12 +23,12 @@ export default function contribute(server: PluginServerContext) {
     const epoch = settingsEpoch;
     const state = await settings.read();
     if (state.status !== "ready") throw new Error(`Juke settings unavailable: ${state.error}`);
-    return { enabled: state.values.enabled, jukes: enabledJukes(state.values), judge: configuredJudge(state.values), revision: `${epoch}:${state.revision}` };
+    return { enabled: state.values.enabled, jukes: enabledJukes(state.values), prompt: state.values.judgePrompt, judge: configuredJudge(state.values), revision: `${epoch}:${state.revision}` };
   });
   return () => { unsubscribe(); stop(); };
 }
 
-type JukeSettings = { enabled: boolean; jukes: readonly JukeId[]; judge?: JudgeChoice | null; revision: string };
+type JukeSettings = { enabled: boolean; jukes: readonly JukeId[]; prompt?: string; judge?: JudgeChoice | null; revision: string };
 
 export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => ({ enabled: true, jukes: JukeIds, revision: "default" })) {
   const ownJudgeIds = new Set<string>();
@@ -78,7 +78,7 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
         if (!(await current())) return;
         const judge = await paseo.workspaces.ref(event.agent.workspaceId).agents.create({
           title: "Juke inference judge",
-          prompt: judgePrompt(event.timeline, preferences.jukes),
+          prompt: judgePrompt(event.timeline, preferences.jukes, preferences.prompt),
           labels: judgeLabels(event.agent.id),
           config: {
             provider: selection,

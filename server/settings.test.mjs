@@ -11,6 +11,7 @@ registerHooks({ resolve(specifier, context, next) {
   }
 } });
 const { default: contribute } = await import("../index.server.ts");
+const { DefaultJudgePrompt, JudgePromptLimit } = await import("../shared/prompt.ts");
 const deferred = () => { let resolve; const promise = new Promise(done => { resolve = done; }); return { promise, resolve }; };
 const continueAs = pattern => ({ status: "idle", lastMessage: JSON.stringify({ decision: "continue", pattern, rationale: "Work remains", followUp: "Finish the requested work." }) });
 const verdict = continueAs("announced-then-stopped");
@@ -41,6 +42,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
   t.after(stop);
   return { created, sent, archived, registered, stop,
     change(enabled) { state = { ...state, values: { ...state.values, enabled }, revision: String(enabled) }; for (const listener of listeners) listener(state); },
+    changePrompt(judgePrompt) { state = { ...state, values: { ...state.values, judgePrompt }, revision: judgePrompt }; for (const listener of listeners) listener(state); },
     async fire() {
       hooks.get("agent.turn_ended")({ agent, outcome: { kind: "completed" }, timeline: [{ type: "user_message", text: "Finish the work." }], turnId: "turn" }, { paseo });
       await setImmediate();
@@ -51,13 +53,45 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
 test("native settings preserve automatic assessment by default; enabled runs still reuse the original model", async t => {
   const h = setup(t); await h.fire();
   assert.equal(h.registered[0].scope, "host");
-  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [] });
+  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgePrompt: DefaultJudgePrompt, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [] });
   assert.deepEqual(h.registered[0].schema.parse({ enabled: false }).enabled, false);
   assert.equal(h.created.length, 1);
   assert.equal(h.created[0].config.provider, "test/test-model");
   assert.equal(h.sent.length, 1);
   assert.match(h.sent[0].message, /^\[Juke assessment\]/);
   assert.deepEqual(h.archived, ["judge"]);
+});
+
+test("saved prompt replaces default instructions, expands checks, and retains conversation evidence", async t => {
+  const custom = 'Be strict. {{checks}} {{allowedNote}} Patterns: {{patterns}}';
+  const h = setup(t, { judgeValues: { judgePrompt: custom, disabledJukes: ["paused-on-its-own"] } });
+  await h.fire();
+  const prompt = h.created[0].prompt;
+  assert.match(prompt, /^Be strict\./);
+  assert.match(prompt, /\d+\. announced-then-stopped:/);
+  assert.match(prompt, /paused-on-its-own \(turned off\):/);
+  assert.doesNotMatch(prompt, /\{\{(?:checks|allowedNote|patterns)\}\}/);
+  assert.doesNotMatch(prompt, /You are Juke/);
+  assert.match(prompt, /Conversation evidence:\n.*Finish the work\./);
+  assert.equal(h.sent.length, 1);
+  const schema = h.registered[0].schema;
+  assert.equal(schema.parse({ judgePrompt: custom }).judgePrompt, custom);
+  assert.equal(schema.safeParse({ judgePrompt: "   " }).success, false);
+  assert.equal(schema.safeParse({ judgePrompt: "x".repeat(JudgePromptLimit + 1) }).success, false);
+});
+
+test("editing the prompt during assessment discards the old verdict and the next run uses the new prompt", async t => {
+  const judgement = deferred(), h = setup(t, { judgement });
+  await h.fire();
+  h.changePrompt("New instructions");
+  judgement.resolve(verdict); await setImmediate();
+  assert.deepEqual(h.sent, []);
+  await h.fire();
+  assert.match(h.created[1].prompt, /^New instructions\n\nConversation evidence:/);
+  assert.equal(h.sent.length, 1);
+  h.changePrompt(DefaultJudgePrompt);
+  await h.fire();
+  assert.match(h.created[2].prompt, /^You are Juke/);
 });
 
 test("a configured judge provider, model and reasoning level replace the judged agent's model", async t => {
