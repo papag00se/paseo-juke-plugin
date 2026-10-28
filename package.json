@@ -1,9 +1,12 @@
 {
-  "name": "juke",
-  "private": true,
-  "version": "0.0.0",
+  "name": "@papagoose/juke",
+  "version": "0.1.0",
+  "description": "Checks completed agent turns for unfinished work and sends a scoped follow-up when appropriate.",
+  "repository": { "type": "git", "url": "git+https://github.com/papag00se/paseo-juke-plugin.git" },
   "files": [
     "paseo-plugin.json",
+    "OVERVIEW.md",
+    "npm-shrinkwrap.json",
     "index.client.ts",
     "index.client.tsx",
     "index.server.ts",
@@ -20,10 +23,12 @@
     "test:settings": "node --test server/settings.test.mjs",
     "eval": "tsx eval/judge.eval.ts"
   },
+  "dependencies": {
+    "@getpaseo/protocol": "0.11.2"
+  },
   "devDependencies": {
     "@getpaseo/client": "0.11.2",
     "@getpaseo/plugin": "0.11.2",
-    "@getpaseo/protocol": "0.11.2",
     "@tanstack/react-query": "^5.90.11",
     "@types/node": "^26.6.2",
     "@types/react": "~19.2.0",

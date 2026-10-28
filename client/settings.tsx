@@ -1,9 +1,11 @@
 import { usePaseo, useSettings, type PluginSurfaceProps } from "@getpaseo/plugin/client";
-import { SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
+import { SettingsAction, SettingsCard, SettingsSection, SettingsSelect, SettingsSwitch } from "@getpaseo/plugin/client/ui";
 import { useQuery } from "@tanstack/react-query";
-import { Text, View } from "react-native";
+import { useState } from "react";
+import { ScrollView, Text, TextInput, View } from "react-native";
 import { Jukes, type JukeId } from "../shared/jukes";
 import { preferences } from "../shared/settings";
+import { DefaultJudgePrompt, JudgePromptLimit } from "../shared/prompt";
 
 const SAME_AS_AGENT = "";
 const MODEL_DEFAULT = "";
@@ -25,7 +27,7 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
   const sameAsAgent = values.judgeProvider === SAME_AS_AGENT;
   const toggleJuke = (id: JukeId, on: boolean) => save({ disabledJukes: on ? values.disabledJukes.filter(other => other !== id) : [...values.disabledJukes, id] });
 
-  return <View style={{ padding: layout.compact ? 12 : 20, gap: 16 }}>
+  return <ScrollView contentContainerStyle={{ padding: layout.compact ? 12 : 20, gap: 16 }}>
     <SettingsSection title="Juke">
       <SettingsCard>
         <SettingsSwitch label="Automatically assess completed turns" value={values.enabled} disabled={settings.saving} onValueChange={enabled => save({ enabled })} hint="Turn this off to pause Juke. Pending assessments won't send follow-ups after this changes." />
@@ -39,6 +41,7 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
       </SettingsCard>
       <Text style={muted}>Turn one off to let agents stop that way without a nudge.</Text>
     </SettingsSection>
+    <PromptEditor key={values.judgePrompt} value={values.judgePrompt} saving={settings.saving} theme={theme} onSave={judgePrompt => save({ judgePrompt })} />
     <SettingsSection title="Judge model">
       <SettingsCard>
         <SettingsSelect label="Provider" value={values.judgeProvider} disabled={settings.saving}
@@ -55,5 +58,23 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
       {!!settings.saveError && <Text accessibilityRole="alert" style={text}>{settings.saveError}</Text>}
       <Text style={muted}>Agents launched by Role Orchestrator are skipped, so the two never compete over the same turn. Each assessment is listed in this plugin's Logs menu.</Text>
     </SettingsSection>
-  </View>;
+  </ScrollView>;
+}
+
+function PromptEditor({ value, saving, theme, onSave }: {
+  value: string; saving: boolean; theme: PluginSurfaceProps["theme"]; onSave: (prompt: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const valid = draft.trim().length > 0 && draft.trim().length <= JudgePromptLimit;
+  return <SettingsSection title="Judge prompt">
+    <Text style={{ color: theme.colors.foregroundMuted }}>Edit the instructions used for new assessments. {"{{checks}}"} inserts enabled checks, {"{{allowedNote}}"} explains disabled checks, and {"{{patterns}}"} lists valid verdict patterns. Conversation evidence is always appended automatically. Keep the JSON response instructions so Juke can read the verdict.</Text>
+    <TextInput accessibilityLabel="Judge prompt" multiline textAlignVertical="top" value={draft}
+      onChangeText={setDraft} editable={!saving} maxLength={JudgePromptLimit}
+      style={{ color: theme.colors.foreground, backgroundColor: theme.colors.surface0, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 8, padding: 12, minHeight: 240, maxHeight: 480 }} />
+    {!valid && <Text accessibilityRole="alert" style={{ color: theme.colors.foreground }}>Enter a non-empty prompt of at most {JudgePromptLimit} characters.</Text>}
+    <SettingsCard>
+      <SettingsAction label="Apply prompt changes" actionLabel="Save prompt" disabled={saving || !valid || draft.trim() === value} onPress={() => onSave(draft.trim())} />
+      <SettingsAction label="Restore the original instructions" actionLabel="Reset to default" disabled={saving || (value === DefaultJudgePrompt && draft === DefaultJudgePrompt)} onPress={() => { setDraft(DefaultJudgePrompt); onSave(DefaultJudgePrompt); }} />
+    </SettingsCard>
+  </SettingsSection>;
 }

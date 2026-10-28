@@ -46,6 +46,7 @@ Each juke has a switch with the same title in settings. Logs show its short id (
 | ⚖️ Your choice of judge | Reuse the judged agent's model, or pick a provider, model and reasoning level |
 | 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and Role Orchestrator runs are skipped |
 | 🎛️ Per-juke switches | Turn off any juke you don't want caught |
+| ✏️ Editable judge prompt | Save custom instructions or reset to the original prompt |
 | ⏸️ One-switch pause | Turn automatic assessments off without removing the plugin |
 
 ## How it fits
@@ -71,6 +72,8 @@ paseo plugin install "$PWD"
 ```
 
 Open **Settings → Plugins → Juke → Settings**. Automatic assessment is on by default. Under **What Juke catches**, each juke has its own switch with a one-line example; all start on. Turn one off and agents may stop that way without a nudge. Under **Judge model**, keep *Same as the agent being judged* or choose a provider, model and reasoning level. Every assessment runs a separate judge agent, so it uses model quota. Each verdict appears in the plugin's **Logs** menu.
+
+Under **Judge prompt**, edit the judge's instructions and choose **Save prompt**, or use **Reset to default** to restore the original instructions. The template inserts enabled checks at `{{checks}}`, disabled-check guidance at `{{allowedNote}}`, and valid verdict patterns at `{{patterns}}`. Conversation evidence is appended automatically. Preserve the JSON response instructions so Juke can parse the result. Prompts are saved per host, allow up to 32,000 characters, and take effect on new assessments; changing the prompt discards any pending verdict.
 
 ![Juke settings in Paseo: the automatic assessment switch, a switch with an example for each of the nine jukes, and the judge model choice](docs/media/settings.png)
 
