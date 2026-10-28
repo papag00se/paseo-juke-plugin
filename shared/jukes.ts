@@ -59,6 +59,13 @@ export const Jukes = [
     followUp: "Tell the agent to do the steps it handed over itself.",
   },
   {
+    id: "abandoned-after-delegation",
+    title: "Stopped after delegated agents finished",
+    example: "The parent launches agents, then everyone stops while their results still need follow-through.",
+    rule: `The parent delegated work and then went idle. The delegated agents have since stopped, and their results or the user's outstanding request show actionable work the parent should now coordinate, review, integrate, or continue. Stopping after delegation is not itself a failure: leave the parent alone if the requested work is complete, a real blocker or permission wait prevents progress, the user asked it to stop, or the delegated results do not establish a productive next step. Use the child status and result evidence, not the parent's earlier claim that agents were running.`,
+    followUp: "Tell the parent to inspect the finished agents' results and take the concrete next step within the user's scope and safety boundaries.",
+  },
+  {
     id: "paused-on-its-own",
     title: "Paused for no reason",
     example: `"This is a long job, so I'll stop here."`,
