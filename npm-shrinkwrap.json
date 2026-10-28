@@ -1,11 +1,11 @@
 {
-  "name": "paseo-juke-plugin",
+  "name": "@papagoose/juke",
   "version": "0.1.0",
   "lockfileVersion": 3,
   "requires": true,
   "packages": {
     "": {
-      "name": "paseo-juke-plugin",
+      "name": "@papagoose/juke",
       "version": "0.1.0",
       "dependencies": {
         "@getpaseo/protocol": "0.11.2"
