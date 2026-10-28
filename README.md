@@ -8,7 +8,7 @@
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Daemon%20plugin-64748b?style=flat-square)
 
-[The nine jukes](#the-nine-jukes) · [Features](#features) · [Getting started](#getting-started) · [Compatibility](#compatibility) · [Reference](docs/REFERENCE.md)
+[The ten jukes](#the-ten-jukes) · [Features](#features) · [Getting started](#getting-started) · [Compatibility](#compatibility) · [Reference](docs/REFERENCE.md)
 
 </div>
 
@@ -16,9 +16,9 @@
 
 🧑‍⚖️ Juke catches that. After every finished turn, a short-lived judge reads what you asked and what the agent actually did. If the agent stopped short, Juke sends it back to work. If not, it stays out of the way.
 
-## The nine jukes
+## The ten jukes
 
-A "juke" is an agent faking the end of a turn while work is still owed. Juke catches nine kinds:
+A "juke" is an agent faking the end of a turn while work is still owed. Juke catches ten kinds:
 
 | # | Juke | Example | What Juke does |
 | --- | --- | --- | --- |
@@ -30,9 +30,12 @@ A "juke" is an agent faking the end of a turn while work is still owed. Juke cat
 | 6 | **Gave up at the first obstacle** — the agent hits one obstacle and says it's stuck | *"The generator isn't installed, so I can't continue."* (it's a project dependency) | Points to a way around it |
 | 7 | **Asked something it could look up** — the answer was already in the chat or the files | *"Which port does the server use?"* (it's in the config file) | Tells it where to look, then to carry on |
 | 8 | **Told you to do its work** — the agent tells you to do steps it could do itself | *"To finish, run `npm run migrate`."* | Tells it to run those steps |
-| 9 | **Paused for no reason** — nothing blocks it, but the agent stops partway | *"This is a long job, so I'll pause here."* (12 of 40 done) | Tells it to finish; long jobs are normal |
+| 9 | **Stopped after delegated agents finished** — the parent goes idle and the workers finish, but their results still need follow-through | Agents finish investigations while their parent remains idle | Reassesses the parent and nudges it only if actionable work remains |
+| 10 | **Paused for no reason** — nothing blocks it, but the agent stops partway | *"This is a long job, so I'll pause here."* (12 of 40 done) | Tells it to finish; long jobs are normal |
 
 Juke leaves the agent alone when you only asked a question, asked for a plan or a status-only answer, said to hold off, asked for a checkpoint, or truly changed direction. It also stays out when the work is really done or really blocked, when only you have the answer or the access (a password, your account, a choice of approach), or when the next step is risky or out of scope (deleting, publishing, spending money).
+
+For delegated work, Juke also checks the idle parent when a child finishes and all its known descendants have stopped. It assesses their results rather than assuming that stopped agents imply unfinished work. This check uses lifecycle events while Juke is running; it does not reconstruct missed events after a reload.
 
 Each juke has a switch with the same title in settings. Logs show its short id (for example `derailed-by-steering`). [Exact judging rules →](docs/REFERENCE.md)
 
@@ -41,7 +44,7 @@ Each juke has a switch with the same title in settings. Logs show its short id (
 | Feature | What you get |
 | --- | --- |
 | 🧠 Semantic review | A model judges intent and follow-through, not a keyword score |
-| 🎯 Nine jukes | Each common way an agent stops early, above |
+| 🎯 Ten jukes | Each common way an agent stops early, above |
 | 🚧 Clear boundaries | Real questions, genuine blockers and unauthorized actions are left alone |
 | ⚖️ Your choice of judge | Reuse the judged agent's model, or pick a provider, model and reasoning level |
 | 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and Role Orchestrator runs are skipped |
@@ -75,7 +78,7 @@ Open **Settings → Plugins → Juke → Settings**. Automatic assessment is on 
 
 Under **Judge prompt**, edit the judge's instructions and choose **Save prompt**, or use **Reset to default** to restore the original instructions. The template inserts enabled checks at `{{checks}}`, disabled-check guidance at `{{allowedNote}}`, and valid verdict patterns at `{{patterns}}`. Conversation evidence is appended automatically. Preserve the JSON response instructions so Juke can parse the result. Prompts are saved per host, allow up to 32,000 characters, and take effect on new assessments; changing the prompt discards any pending verdict.
 
-![Juke settings in Paseo: the automatic assessment switch, a switch with an example for each of the nine jukes, and the judge model choice](docs/media/settings.png)
+![Juke settings in Paseo: the automatic assessment switch, per-juke switches, and the judge model choice](docs/media/settings.png)
 
 ## Compatibility
 

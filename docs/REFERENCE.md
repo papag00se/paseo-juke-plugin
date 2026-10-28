@@ -1,6 +1,6 @@
 # Juke
 
-Juke is an inference-first Paseo plugin. After a completed agent turn, it launches a short-lived judge, by default on the judged agent's provider and model (or a fixed judge model chosen in settings). The judge semantically decides whether the agent stopped early in one of nine ways (the "jukes"):
+Juke is an inference-first Paseo plugin. After a completed agent turn, it launches a short-lived judge, by default on the judged agent's provider and model (or a fixed judge model chosen in settings). The judge semantically decides whether the agent stopped early in one of ten ways (the "jukes"):
 
 - **answered-instead-of-acting**: the user intended work, but the agent took the message as a question and only answered. This includes question-shaped requests ("Can you fix this?") and completion checks on previously requested work ("Did you fill in all the data?" → "Not yet; here's what's missing"). Genuine information-only questions are left alone.
 - **announced-then-stopped**: the agent said it will do something ("I'll now…", "Let me…") and ended its turn without doing it.
@@ -10,6 +10,7 @@ Juke is an inference-first Paseo plugin. After a completed agent turn, it launch
 - **made-up-blocker**: the agent declared itself stuck after one obstacle it could work around (another command, reading the error, a different path). Real blockers are left alone: things only the user can supply, or actions the user hasn't authorized.
 - **asked-what-it-could-find**: the agent asked the user a factual question whose answer is earlier in the conversation or readable from the code, config, or a harmless command. Questions about the user's preferences or information only the user has are left alone.
 - **handed-work-back**: the agent told the user to do in-scope steps it could do itself ("run this command to finish"). Steps that need the user's own credentials, hardware, accounts, or judgment, or that the user said they'd do, are left alone.
+- **abandoned-after-delegation**: the parent went idle after delegating, and the stopped workers' results reveal actionable work the parent should review, integrate, or continue. Complete work, genuine blockers, and user-directed stops are left alone.
 - **paused-on-its-own**: the agent stopped partway through authorized work with nothing blocking it, citing length, time, or a self-chosen checkpoint. Task length is never a reason to stop. Checkpoints the user asked for are left alone.
 
 The judge's instructions are editable under **Settings → Plugins → Juke → Settings → Judge prompt**. Save applies the edited prompt; reset saves the default from `shared/prompt.ts`. The host-scoped `judgePrompt` setting defaults to the original instructions for existing installations and rejects blank prompts or prompts longer than 32,000 characters. `{{checks}}`, `{{allowedNote}}`, and `{{patterns}}` are expanded once from the current per-juke switches; conversation evidence is always appended separately. Keep those placeholders and the JSON response instructions when customizing. Changes invalidate pending assessments, just like other settings. Verdict validation and disabled-juke enforcement remain in code regardless of the prompt.
@@ -17,6 +18,8 @@ The judge's instructions are editable under **Settings → Plugins → Juke → 
 All jukes live in one list in `shared/jukes.ts`: each entry holds the id, the settings title and example, the rule the judge applies, and any juke-specific follow-up guidance. The settings screen, the judge prompt, verdict parsing, and tests all read from it.
 
 Each juke can be turned off in settings (stored as `disabledJukes`, so new jukes start on). A turned-off juke is left out of the judge prompt, and the judge is told that behavior is acceptable so it doesn't report the same stop under a neighboring juke. A `continue` verdict must name its juke; if it names a turned-off one anyway, Juke logs it and sends nothing. With every juke off, no judge runs.
+
+When a child turn ends, the delegation check reads the full agent directory and reevaluates an idle parent only if all known, non-archived descendants have stopped and no one is waiting for permission. It supplies the parent conversation and the latest results of up to 20 descendants, recording omissions. It rechecks settings, parent and child activity before sending; a new turn invalidates the pending assessment. Role Orchestrator-owned runs remain excluded. Canceled child turns do not trigger a check. The check is event-driven while the plugin is running; it does not replay missed events after restart. User-edited judge prompts should retain the template placeholders to include the new check.
 
 Only an inference verdict of `continue` sends the original agent a follow-up.
 

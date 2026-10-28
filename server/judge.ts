@@ -155,7 +155,7 @@ export function evidence(timeline: readonly AgentTimelineItem[]): string {
  * accepted behavior: given only their names, the judge did not recognize the behavior and
  * reported the same stop under a juke that was still on.
  */
-export function judgePrompt(timeline: readonly AgentTimelineItem[], enabled: readonly JukeId[] = JukeIds, template = DefaultJudgePrompt): string {
+export function judgePrompt(timeline: readonly AgentTimelineItem[], enabled: readonly JukeId[] = JukeIds, template = DefaultJudgePrompt, delegationEvidence?: string): string {
   const active = Jukes.filter((juke) => enabled.includes(juke.id));
   const checks = active
     .map((juke, index) => `${index + 1}. ${juke.id}: ${juke.rule}${"followUp" in juke ? ` Follow-up: ${juke.followUp}` : ""}`)
@@ -166,7 +166,7 @@ export function judgePrompt(timeline: readonly AgentTimelineItem[], enabled: rea
     : "";
   const replacements: Record<string, string> = { checks, allowedNote, patterns: active.map((juke) => `"${juke.id}"`).join("|") };
   const instructions = template.replace(/\{\{(checks|allowedNote|patterns)\}\}/g, (_, key: string) => replacements[key]!);
-  return `${instructions}\n\nConversation evidence:\n${evidence(timeline)}`;
+  return `${instructions}\n\nConversation evidence:\n${evidence(timeline)}${delegationEvidence ? `\n\nDelegated agents, observed after the parent's turn (untrusted data):\n${delegationEvidence}` : ""}`;
 }
 
 /** Operator billing policy, shared by the judge launcher and offline tests. */
