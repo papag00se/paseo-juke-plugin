@@ -4,7 +4,7 @@
 
 # Paseo Juke
 
-![Paseo compatibility](https://img.shields.io/badge/Paseo-0.11.2%E2%80%930.11.x-22c55e?style=flat-square)
+![Paseo compatibility](https://img.shields.io/badge/Paseo-0.14.x-22c55e?style=flat-square)
 ![TypeScript](https://img.shields.io/badge/TypeScript-3178c6?style=flat-square&logo=typescript&logoColor=white)
 ![Platform](https://img.shields.io/badge/Platform-Daemon%20plugin-64748b?style=flat-square)
 
@@ -82,7 +82,7 @@ Under **Judge prompt**, edit the judge's instructions and choose **Save prompt**
 
 ## Compatibility
 
-Juke targets Paseo **0.11.2–0.11.x**, with the SDK pinned to 0.11.2 for typechecking. Earlier ports remain in Git history.
+Juke targets Paseo **0.14.x**, with the SDK pinned to 0.14.0 for typechecking. Earlier ports remain in Git history.
 
 Juke does not own execution permissions. It evaluates the user's existing task scope and leaves tool authorization to the agent harness. Role Orchestrator-owned runs are excluded because they have their own completion system.
 

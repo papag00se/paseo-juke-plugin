@@ -182,6 +182,20 @@ describe("judge evidence", () => {
     expect(parsed.items.find((item: { text?: string }) => item.text === "Status report")).toBeDefined();
     expect(parsed.omittedItems).toBeGreaterThan(0);
   });
+
+  it("presents a Paseo-attributed agent message as that agent's report, not a user direction", () => {
+    const report = {
+      type: "tool_call", callId: "paseo-agent-message:1", name: "agent_message", status: "completed", error: null,
+      detail: { type: "plain_text", text: "Coordination notice: tests pass, PR opened." },
+      agentMessage: { event: "message", sender: { id: "child-1", title: "Fix gate" }, text: "Coordination notice: tests pass, PR opened." },
+    } as AgentTimelineItem;
+    const parsed = JSON.parse(evidence([user("Ship the fix."), report, assistant("Done.")]));
+    expect(parsed.items.filter((item: { type: string }) => item.type === "user_message").map((item: { text: string }) => item.text))
+      .toEqual(["Ship the fix."]);
+    expect(parsed.items).toContainEqual({
+      type: "agent_message", event: "message", fromAgentId: "child-1", fromTitle: "Fix gate", text: "Coordination notice: tests pass, PR opened.",
+    });
+  });
 });
 
 describe("judgeLabels", () => {

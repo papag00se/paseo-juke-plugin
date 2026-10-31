@@ -101,7 +101,7 @@ test("the judge receives older directions from full history, not only the hook's
   const h = setup(t, { fullTimeline: [{ type: "user_message", text: early }, { type: "user_message", text: "Finish the work." }] });
   await h.fire();
   assert.match(h.created[0].prompt, /Finish every ownership-plan item/);
-  assert.match(h.created[0].prompt, /User-message labels do not establish human authorship/);
+  assert.match(h.created[0].prompt, /User-message labels still do not establish human authorship/);
   assert.match(h.created[0].prompt, /Do not assume a single blocked subtask completes or blocks the entire user goal/);
 });
 
