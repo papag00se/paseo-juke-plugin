@@ -1,7 +1,8 @@
 import type { PluginServerContext, PluginHookContext, PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { randomUUID } from "node:crypto";
-import { childEvidence, idleDelegation, parentTimeline } from "./server/delegation";
+import { childEvidence, idleDelegation } from "./server/delegation";
+import { agentHistory, createSubagentClassifier, type SubagentReport } from "./server/provenance";
 import { isRoleOrchestrated } from "./server/ownership";
 import { configuredJudge, enabledJukes, preferences, type JudgeChoice } from "./shared/settings";
 import { JukeIds, type JukeId } from "./shared/jukes";
@@ -41,6 +42,7 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
   const activeParents = new Set<string>();
   const seenChildTurns = new Set<string>();
   let stopped = false;
+  const classifySubagents = createSubagentClassifier();
   const changeDelegation = (parentId: string) => delegationVersion.set(parentId, (delegationVersion.get(parentId) ?? 0) + 1);
 
   const advance = (agentId: string) => {
@@ -100,14 +102,19 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
         if (!(await current())) return;
         // Hook payloads can contain only a tail after a daemon/session reload. Fetch the
         // complete canonical history so earlier user direction is never silently dropped.
-        const timeline = delegation ? event.timeline : await parentTimeline(paseo, event.agent.id);
+        const history = await agentHistory(paseo, event.agent.id);
+        const timeline = history.map(entry => entry.item);
+        // Provenance is best effort: on failure every unmarked message stays a possible user message.
+        let reports = new Map<number, SubagentReport>();
+        try { reports = await classifySubagents(paseo, event.agent.id, history); }
+        catch (error) { console.error("[juke] subagent message classification failed", { agentId: event.agent.id, error }); }
         if (!(await current())) return;
         reservedJudgeId = randomUUID();
         ownJudgeIds.add(reservedJudgeId);
         const judge = await paseo.workspaces.ref(event.agent.workspaceId).agents.create({
           agentId: reservedJudgeId,
           title: "Juke inference judge",
-          prompt: judgePrompt(timeline, delegation ? ["abandoned-after-delegation"] : preferences.jukes, preferences.prompt, delegation?.evidence, preferences.jukes),
+          prompt: judgePrompt(timeline, delegation ? ["abandoned-after-delegation"] : preferences.jukes, preferences.prompt, delegation?.evidence, preferences.jukes, reports),
           labels: judgeLabels(event.agent.id),
           config: {
             provider: selection,
@@ -191,7 +198,6 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           if (!preferences.enabled || !preferences.jukes.includes("abandoned-after-delegation")) continue;
           const tree = await idleDelegation(pending.context.paseo, parentId);
           if (!tree || await isRoleOrchestrated(pending.context.paseo, tree.parent)) continue;
-          const timeline = await parentTimeline(pending.context.paseo, parentId);
           const evidence = await childEvidence(pending.context.paseo, tree.children, pending.event.agent.id);
           const stillCurrent = async () => {
             if (delegationVersion.get(parentId) !== version) return false;
@@ -199,7 +205,7 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
             return !!latest && latest.children.length === tree.children.length && latest.children.every(child => tree.children.some(old => old.id === child.id));
           };
           if (!(await stillCurrent())) continue;
-          assess({ agent: { id: parentId, parentAgentId: null, workspaceId: tree.parent.workspaceId ?? null, provider: tree.parent.provider, cwd: tree.parent.cwd, title: tree.parent.title }, turnId: null, outcome: { kind: "completed" }, timeline }, pending.context, { evidence, stillCurrent });
+          assess({ agent: { id: parentId, parentAgentId: null, workspaceId: tree.parent.workspaceId ?? null, provider: tree.parent.provider, cwd: tree.parent.cwd, title: tree.parent.title }, turnId: null, outcome: { kind: "completed" }, timeline: [] }, pending.context, { evidence, stillCurrent });
         }
       } catch (error) {
         console.error("[juke] delegated-agent assessment failed", { parentId, error });

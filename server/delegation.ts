@@ -2,6 +2,7 @@ import type { PaseoAgent, PaseoApi } from "@getpaseo/client";
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { JukeJudgeLabel } from "./judge";
+import { agentHistory } from "./provenance";
 
 /** An incomplete directory must never be mistaken for an idle agent tree. */
 async function agents(paseo: PaseoApi): Promise<PaseoAgent[]> {
@@ -44,21 +45,7 @@ export async function idleDelegation(paseo: PaseoApi, parentId: string): Promise
 
 /** Fetch the parent's full conversation so older user intent isn't lost to tail pagination. */
 export async function parentTimeline(paseo: PaseoApi, parentId: string): Promise<AgentTimelineItem[]> {
-  const timeline = paseo.agents.ref(parentId).timeline;
-  let page = await timeline.refetch({ direction: "tail", projection: "canonical", limit: 200 });
-  const entries = [...page.entries];
-  const seen = new Set<string>();
-  while (page.hasOlder) {
-    if (page.error) throw new Error(page.error);
-    const cursor = page.startCursor;
-    const key = cursor && JSON.stringify(cursor);
-    if (!cursor || !key || seen.has(key)) throw new Error("Incomplete parent timeline");
-    seen.add(key);
-    page = await timeline.refetch({ direction: "before", cursor, projection: "canonical", limit: 200 });
-    entries.unshift(...page.entries);
-  }
-  if (page.error) throw new Error(page.error);
-  return entries.map(entry => entry.item);
+  return (await agentHistory(paseo, parentId)).map(entry => entry.item);
 }
 
 /** Latest child outputs are evidence, not instructions to the judge. */
