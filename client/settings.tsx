@@ -67,7 +67,7 @@ function PromptEditor({ value, saving, theme, onSave }: {
   const [draft, setDraft] = useState(value);
   const valid = draft.trim().length > 0 && draft.trim().length <= JudgePromptLimit;
   return <SettingsSection title="Judge prompt">
-    <Text style={{ color: theme.colors.foregroundMuted }}>Edit the instructions used for new assessments. {"{{checks}}"} inserts enabled checks, {"{{allowedNote}}"} explains disabled checks, and {"{{patterns}}"} lists valid verdict patterns. Conversation evidence is always appended automatically. Keep the JSON response instructions so Juke can read the verdict.</Text>
+    <Text style={{ color: theme.colors.foregroundMuted }}>Edit the instructions used for new assessments. {"{{checks}}"} inserts enabled checks, {"{{allowedNote}}"} explains disabled checks, and {"{{patterns}}"} lists valid verdict patterns. Session-intent guidance and conversation evidence are always appended automatically. Keep the JSON response instructions so Juke can read the verdict.</Text>
     <TextInput accessibilityLabel="Judge prompt" multiline textAlignVertical="top" value={draft}
       onChangeText={setDraft} editable={!saving} maxLength={JudgePromptLimit}
       style={{ color: theme.colors.foreground, backgroundColor: theme.colors.surface0, borderColor: theme.colors.border, borderWidth: 1, borderRadius: 8, padding: 12, minHeight: 240, maxHeight: 480 }} />

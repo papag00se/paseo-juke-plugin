@@ -49,6 +49,7 @@ describe("delegation completion", () => {
     expect(h.prompts[0]).toContain("Finish all the work");
     expect(h.prompts[0]).toContain("Result from one: work remains");
     expect(h.prompts[0]).toMatch(/^1\. abandoned-after-delegation:/m);
+    expect(h.prompts[0]).not.toContain("paused-on-its-own (turned off)");
     expect(h.sent).toHaveLength(1);
     h.stop();
   });

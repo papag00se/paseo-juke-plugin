@@ -98,12 +98,16 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           return;
         }
         if (!(await current())) return;
+        // Hook payloads can contain only a tail after a daemon/session reload. Fetch the
+        // complete canonical history so earlier user direction is never silently dropped.
+        const timeline = delegation ? event.timeline : await parentTimeline(paseo, event.agent.id);
+        if (!(await current())) return;
         reservedJudgeId = randomUUID();
         ownJudgeIds.add(reservedJudgeId);
         const judge = await paseo.workspaces.ref(event.agent.workspaceId).agents.create({
           agentId: reservedJudgeId,
           title: "Juke inference judge",
-          prompt: judgePrompt(event.timeline, delegation ? ["abandoned-after-delegation"] : preferences.jukes, preferences.prompt, delegation?.evidence),
+          prompt: judgePrompt(timeline, delegation ? ["abandoned-after-delegation"] : preferences.jukes, preferences.prompt, delegation?.evidence, preferences.jukes),
           labels: judgeLabels(event.agent.id),
           config: {
             provider: selection,

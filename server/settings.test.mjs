@@ -16,7 +16,7 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const continueAs = pattern => ({ status: "idle", lastMessage: JSON.stringify({ decision: "continue", pattern, rationale: "Work remains", followUp: "Finish the requested work." }) });
 const verdict = continueAs("announced-then-stopped");
 
-function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, result = verdict } = {}) {
+function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, result = verdict, timelineError, fullTimeline = [{ type: "user_message", text: "Finish the work." }] } = {}) {
   const hooks = new Map(), created = [], sent = [], archived = [], registered = [];
   // Revisions are content-addressed, not monotonic: false → true restores the
   // original revision. Subscribers must still invalidate the old assessment.
@@ -27,6 +27,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
   const paseo = {
     agents: { ref: id => ({
       refresh: async () => { if (preparation) await preparation.promise; return { agent }; },
+      timeline: { refetch: async () => { if (timelineError) throw new Error("history unavailable"); return { entries: fullTimeline.map(item => ({ item })), hasOlder: false }; } },
       send: async message => { sent.push({ id, message }); },
       archive: async () => { archived.push(id); },
     }) },
@@ -87,11 +88,28 @@ test("editing the prompt during assessment discards the old verdict and the next
   judgement.resolve(verdict); await setImmediate();
   assert.deepEqual(h.sent, []);
   await h.fire();
-  assert.match(h.created[1].prompt, /^New instructions\n\nConversation evidence:/);
+  assert.match(h.created[1].prompt, /^New instructions\n\nDetermine the user's overall goal/);
+  assert.match(h.created[1].prompt, /Conversation evidence:/);
   assert.equal(h.sent.length, 1);
   h.changePrompt(DefaultJudgePrompt);
   await h.fire();
   assert.match(h.created[2].prompt, /^You are Juke/);
+});
+
+test("the judge receives older directions from full history, not only the hook's recent tail", async t => {
+  const early = "Finish every ownership-plan item, not just the current task.";
+  const h = setup(t, { fullTimeline: [{ type: "user_message", text: early }, { type: "user_message", text: "Finish the work." }] });
+  await h.fire();
+  assert.match(h.created[0].prompt, /Finish every ownership-plan item/);
+  assert.match(h.created[0].prompt, /User-message labels do not establish human authorship/);
+  assert.match(h.created[0].prompt, /Do not assume a single blocked subtask completes or blocks the entire user goal/);
+});
+
+test("a history fetch failure is reported and does not judge a partial timeline", async t => {
+  const errors = []; t.mock.method(console, "error", (...args) => errors.push(args));
+  const h = setup(t, { timelineError: true }); await h.fire();
+  assert.equal(h.created.length, 0);
+  assert.ok(errors.some(args => String(args[0]).includes("inference judge failed") && String(args[1].error).includes("history unavailable")));
 });
 
 test("a configured judge provider, model and reasoning level replace the judged agent's model", async t => {
