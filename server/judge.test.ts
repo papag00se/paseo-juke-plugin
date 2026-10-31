@@ -156,24 +156,45 @@ describe("judge evidence", () => {
       .toEqual(["Status report", "The records are still incomplete."]);
   });
 
-  it("retains the latest response even when earlier user messages exhaust the budget", () => {
+  it("preserves every possible user message even when they exceed the supporting-evidence budget", () => {
     const timeline = [
       ...Array.from({ length: 20 }, (_, index) => user(`earlier ${index}: ` + "x".repeat(8_000))),
       user("Status report"), assistant("Local cards are still unfinished."),
     ];
     const parsed = JSON.parse(evidence(timeline));
-    expect(parsed.omittedItems).toBeGreaterThan(0);
+    expect(parsed.items.filter((item: { type: string }) => item.type === "user_message")).toEqual(timeline.slice(0, -1));
     expect(parsed.items.slice(-2).map((item: { text: string }) => item.text))
       .toEqual(["Status report", "Local cards are still unfinished."]);
   });
 
-  it("bounds oversized messages and escaped strings without producing broken JSON", () => {
+  it("preserves oversized user messages and escaped strings without producing broken JSON", () => {
     const result = evidence([user("opening request " + '\\"'.repeat(100_000) + " final boundary"), assistant("Not done.")]);
     const parsed = JSON.parse(result);
-    expect(result.length).toBeLessThanOrEqual(48_000);
-    expect(parsed.items[0].text).toMatch(/^opening request /);
-    expect(parsed.items[0].text).toMatch(/ final boundary$/);
-    expect(parsed.items[0].text).toContain("text omitted");
+    expect(parsed.items[0].text).toBe("opening request " + '\\"'.repeat(100_000) + " final boundary");
+    expect(parsed.items[0].text).not.toContain("text omitted");
+  });
+
+  it("does not let marked automated messages crowd out early directions", () => {
+    const early = "Keep working through the whole ownership plan.";
+    const timeline = [user(early), ...Array.from({ length: 300 }, (_, i) => user(`[Juke assessment] automated ${i} ${"x".repeat(500)}`)), user("Status report"), assistant("A subtask is blocked.")];
+    const parsed = JSON.parse(evidence(timeline));
+    expect(parsed.items.find((item: { text?: string }) => item.text === early)).toBeDefined();
+    expect(parsed.items.find((item: { text?: string }) => item.text === "Status report")).toBeDefined();
+    expect(parsed.omittedItems).toBeGreaterThan(0);
+  });
+
+  it("presents a Paseo-attributed agent message as that agent's report, not a user direction", () => {
+    const report = {
+      type: "tool_call", callId: "paseo-agent-message:1", name: "agent_message", status: "completed", error: null,
+      detail: { type: "plain_text", text: "Coordination notice: tests pass, PR opened." },
+      agentMessage: { event: "message", sender: { id: "child-1", title: "Fix gate" }, text: "Coordination notice: tests pass, PR opened." },
+    } as AgentTimelineItem;
+    const parsed = JSON.parse(evidence([user("Ship the fix."), report, assistant("Done.")]));
+    expect(parsed.items.filter((item: { type: string }) => item.type === "user_message").map((item: { text: string }) => item.text))
+      .toEqual(["Ship the fix."]);
+    expect(parsed.items).toContainEqual({
+      type: "agent_message", event: "message", fromAgentId: "child-1", fromTitle: "Fix gate", text: "Coordination notice: tests pass, PR opened.",
+    });
   });
 });
 

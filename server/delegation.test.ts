@@ -25,7 +25,7 @@ function harness(options: { disabled?: boolean; judgeWait?: Promise<any> } = {})
         refresh: async () => ({ agent: list.find(a => a.id === id) }),
         send: async (text: string) => { sent.push(text); },
         archive: async () => ({}),
-        timeline: { refetch: async () => ({ entries: [{ item: id === "parent" ? { type: "user_message", text: "Finish all the work" } : { type: "assistant_message", text: `Result from ${id}: work remains` } }], hasOlder: false }) },
+        timeline: { append: async () => ({}), refetch: async () => ({ entries: [{ item: id === "parent" ? { type: "user_message", text: "Finish all the work" } : { type: "assistant_message", text: `Result from ${id}: work remains` } }], hasOlder: false }) },
       }),
     },
     workspaces: { ref: () => ({ agents: { create: async (input: any) => {
@@ -33,8 +33,9 @@ function harness(options: { disabled?: boolean; judgeWait?: Promise<any> } = {})
       return { id: "judge", waitForFinish: async () => options.judgeWait ?? { status: "idle", lastMessage: JSON.stringify({ decision: "continue", pattern: "abandoned-after-delegation", rationale: "Results need review", followUp: "Review the delegated results and finish the work." }) } };
     } } }) },
   };
-  const server = { on: (name: string, handler: Function) => { hooks.set(name, handler); return () => hooks.delete(name); } } as unknown as PluginServerContext;
-  const stop = originalAutomaticContribution(server, async () => ({ enabled: true, jukes: options.disabled ? JukeIds.filter(id => id !== "abandoned-after-delegation") : JukeIds, revision: "one" }));
+  const server = { on: (name: string, handler: Function) => { hooks.set(name, handler); return () => hooks.delete(name); }, handle: () => {} } as unknown as PluginServerContext;
+  // Nudges send at once here; the countdown has its own tests.
+  const stop = originalAutomaticContribution(server, async () => ({ enabled: true, jukes: options.disabled ? JukeIds.filter(id => id !== "abandoned-after-delegation") : JukeIds, revision: "one", nudgeDelaySeconds: 0, autoResume: { enabled: true, minutes: 5 } }));
   const fire = (id = "two", parent = "parent") => hooks.get("agent.turn_ended")!(event(id, parent), { paseo });
   const start = (id = "one") => hooks.get("agent.turn_started")!({ agent: { ...agent(id), parentAgentId: "parent" }, turnId: "new" }, { paseo });
   return { list, paseo, sent, prompts, fire, start, stop };
@@ -49,6 +50,7 @@ describe("delegation completion", () => {
     expect(h.prompts[0]).toContain("Finish all the work");
     expect(h.prompts[0]).toContain("Result from one: work remains");
     expect(h.prompts[0]).toMatch(/^1\. abandoned-after-delegation:/m);
+    expect(h.prompts[0]).not.toContain("paused-on-its-own (turned off)");
     expect(h.sent).toHaveLength(1);
     h.stop();
   });
@@ -73,7 +75,7 @@ describe("delegation completion", () => {
     // Exercise the same lifecycle handler with a fresh turn ID.
     h.stop();
     const callbacks = new Map<string, Function>();
-    const server = { on: (name: string, fn: Function) => { callbacks.set(name, fn); return () => {}; } } as unknown as PluginServerContext;
+    const server = { on: (name: string, fn: Function) => { callbacks.set(name, fn); return () => {}; }, handle: () => {} } as unknown as PluginServerContext;
     const stop = originalAutomaticContribution(server);
     callbacks.get("agent.turn_ended")!(canceled, { paseo: h.paseo }); await flush();
     expect(h.prompts).toHaveLength(0); stop();

@@ -15,6 +15,11 @@ export const preferences = defineSettings({
     // Jukes are on unless listed here, so a newly added juke starts on. Plain strings, so a
     // stored id for a juke that no longer exists cannot invalidate the user's other settings.
     disabledJukes: z.array(z.string()).default([]),
+    // Seconds a nudge waits, cancellable, before Juke sends it. 0 sends immediately.
+    nudgeDelaySeconds: z.number().int().min(0).max(600).default(15),
+    // /juke-pause lifts itself this long after the user's latest message, unless turned off.
+    pauseAutoResume: z.boolean().default(true),
+    pauseAutoResumeMinutes: z.number().int().min(1).max(1440).default(5),
   }),
 });
 
