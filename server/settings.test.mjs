@@ -17,18 +17,19 @@ const continueAs = pattern => ({ status: "idle", lastMessage: JSON.stringify({ d
 const verdict = continueAs("announced-then-stopped");
 
 function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, result = verdict, timelineError, fullTimeline = [{ type: "user_message", text: "Finish the work." }] } = {}) {
-  const hooks = new Map(), created = [], sent = [], archived = [], registered = [];
+  const hooks = new Map(), handlers = new Map(), created = [], sent = [], archived = [], registered = [], rows = [];
   // Revisions are content-addressed, not monotonic: false → true restores the
   // original revision. Subscribers must still invalidate the old assessment.
-  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], ...judgeValues }, revision: String(enabled) };
+  // These assessment tests send at once; the countdown has its own tests below.
+  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 0, pauseAutoResume: true, pauseAutoResumeMinutes: 5, ...judgeValues }, revision: String(enabled) };
   const listeners = new Set();
   t.mock.method(console, "log", () => {});
   const agent = { id: "original", workspaceId: "workspace", provider: "test", model: "test-model", labels: {} };
   const paseo = {
     agents: { ref: id => ({
       refresh: async () => { if (preparation) await preparation.promise; return { agent }; },
-      timeline: { refetch: async () => { if (timelineError) throw new Error("history unavailable"); return { entries: fullTimeline.map(item => ({ item })), hasOlder: false }; } },
       send: async message => { sent.push({ id, message }); },
+      timeline: { refetch: async () => { if (timelineError) throw new Error("history unavailable"); return { entries: fullTimeline.map(item => ({ item })), hasOlder: false }; }, append: async row => { rows.push(row); } },
       archive: async () => { archived.push(id); },
     }) },
     workspaces: { ref: () => ({ agents: { create: async options => {
@@ -39,9 +40,13 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
   const stop = contribute({
     registerSettings: definition => { registered.push(definition); return { read: async () => state, subscribe: listener => { listeners.add(listener); return () => listeners.delete(listener); } }; },
     on: (name, handler) => { hooks.set(name, handler); return () => hooks.delete(name); },
+    handle: (contract, handler) => { handlers.set(contract.name, handler); },
   });
   t.after(stop);
-  return { created, sent, archived, registered, stop,
+  return { created, sent, archived, registered, rows, stop,
+    rpc: (name, input) => handlers.get(name)(input, { paseo }),
+    startTurn() { hooks.get("agent.turn_started")({ agent }, { paseo }); },
+    setValues(values) { state = { ...state, values: { ...state.values, ...values }, revision: JSON.stringify(values) }; for (const listener of listeners) listener(state); },
     change(enabled) { state = { ...state, values: { ...state.values, enabled }, revision: String(enabled) }; for (const listener of listeners) listener(state); },
     changePrompt(judgePrompt) { state = { ...state, values: { ...state.values, judgePrompt }, revision: judgePrompt }; for (const listener of listeners) listener(state); },
     async fire() {
@@ -54,7 +59,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
 test("native settings preserve automatic assessment by default; enabled runs still reuse the original model", async t => {
   const h = setup(t); await h.fire();
   assert.equal(h.registered[0].scope, "host");
-  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgePrompt: DefaultJudgePrompt, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [] });
+  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgePrompt: DefaultJudgePrompt, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 15, pauseAutoResume: true, pauseAutoResumeMinutes: 5 });
   assert.deepEqual(h.registered[0].schema.parse({ enabled: false }).enabled, false);
   assert.equal(h.created.length, 1);
   assert.equal(h.created[0].config.provider, "test/test-model");
@@ -187,4 +192,39 @@ test("plugin cleanup also suppresses pending follow-ups", async t => {
   const judgement = deferred(), h = setup(t, { judgement });
   await h.fire(); h.stop(); judgement.resolve(verdict); await setImmediate();
   assert.deepEqual(h.sent, []); assert.deepEqual(h.archived, ["judge"]);
+});
+
+test("a delayed nudge waits visibly and is withdrawn when the agent starts another turn", async t => {
+  const h = setup(t, { judgeValues: { nudgeDelaySeconds: 15 } });
+  await h.fire();
+  assert.deepEqual(h.sent, []);
+  assert.deepEqual(h.rows.map(row => [row.kind, row.data.state]), [["nudge", "pending"]]);
+  assert.equal(h.rows[0].data.pattern, "announced-then-stopped");
+  h.startTurn();
+  await setImmediate();
+  assert.deepEqual(h.rows.map(row => row.data.state), ["pending", "superseded"]);
+  assert.deepEqual(h.sent, []);
+});
+
+test("Send now delivers a waiting nudge and Cancel withdraws one", async t => {
+  const h = setup(t, { judgeValues: { nudgeDelaySeconds: 15 } });
+  await h.fire();
+  assert.deepEqual(await h.rpc("juke.nudge.now", { agentId: "original" }), { sent: true });
+  assert.equal(h.sent.length, 1);
+  assert.match(h.sent[0].message, /^\[Juke assessment\] Finish the requested work\./);
+  await h.fire();
+  assert.deepEqual(await h.rpc("juke.nudge.cancel", { agentId: "original" }), { canceled: true });
+  assert.equal(h.sent.length, 1);
+  assert.deepEqual(h.rows.map(row => row.data.state), ["pending", "sent", "pending", "canceled"]);
+});
+
+test("/juke-pause stops assessments for that agent until /juke-resume", async t => {
+  const h = setup(t, { judgeValues: { pauseAutoResume: false } });
+  await h.rpc("juke.pause", { agentId: "original" });
+  assert.deepEqual(h.rows.at(-1), { type: "plugin", id: "pause:original", kind: "pause", version: 1, data: { paused: true, autoResumeMinutes: null } });
+  await h.fire();
+  assert.deepEqual(h.created, []); assert.deepEqual(h.sent, []);
+  assert.deepEqual(await h.rpc("juke.resume", { agentId: "original" }), { wasPaused: true });
+  await h.fire();
+  assert.equal(h.created.length, 1); assert.equal(h.sent.length, 1);
 });

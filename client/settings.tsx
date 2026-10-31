@@ -8,6 +8,10 @@ import { preferences } from "../shared/settings";
 import { DefaultJudgePrompt, JudgePromptLimit } from "../shared/prompt";
 
 const SAME_AS_AGENT = "";
+const DelayChoices = [0, 5, 10, 15, 30, 60, 120];
+const ResumeChoices = [1, 2, 5, 10, 15, 30, 60, 120];
+/** Keep a saved value listed even if it isn't one of the presets. */
+const withCurrent = (choices: readonly number[], current: number) => choices.includes(current) ? choices : [...choices, current].sort((a, b) => a - b);
 const MODEL_DEFAULT = "";
 
 export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
@@ -33,6 +37,19 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
         <SettingsSwitch label="Automatically assess completed turns" value={values.enabled} disabled={settings.saving} onValueChange={enabled => save({ enabled })} hint="Turn this off to pause Juke. Pending assessments won't send follow-ups after this changes." />
       </SettingsCard>
       <Text style={muted}>After an agent finishes a turn, Juke checks whether it stopped before the work was done. If so, Juke tells it to carry on.</Text>
+    </SettingsSection>
+    <SettingsSection title="Before Juke nudges">
+      <SettingsCard>
+        <SettingsSelect label="Wait before nudging" value={String(values.nudgeDelaySeconds)} disabled={settings.saving}
+          options={withCurrent(DelayChoices, values.nudgeDelaySeconds).map(seconds => ({ value: String(seconds), label: seconds === 0 ? "Don't wait" : `${seconds} seconds` }))}
+          onValueChange={value => save({ nudgeDelaySeconds: Number(value) })} />
+        <SettingsSwitch label="Resume automatically after /juke-pause" value={values.pauseAutoResume} disabled={settings.saving}
+          hint="Otherwise a paused agent stays paused until /juke-resume." onValueChange={pauseAutoResume => save({ pauseAutoResume })} />
+        {values.pauseAutoResume ? <SettingsSelect label="Resume after your latest message" value={String(values.pauseAutoResumeMinutes)} disabled={settings.saving}
+          options={withCurrent(ResumeChoices, values.pauseAutoResumeMinutes).map(minutes => ({ value: String(minutes), label: `${minutes} minute${minutes === 1 ? "" : "s"}` }))}
+          onValueChange={value => save({ pauseAutoResumeMinutes: Number(value) })} /> : null}
+      </SettingsCard>
+      <Text style={muted}>A nudge shows a countdown in the chat with Cancel and Send now. Sending a message of your own before it runs out withdraws it. Type /juke-pause to stop Juke for one agent.</Text>
     </SettingsSection>
     <SettingsSection title="What Juke catches">
       <SettingsCard>

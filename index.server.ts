@@ -5,6 +5,8 @@ import { childEvidence, idleDelegation, parentTimeline } from "./server/delegati
 import { isRoleOrchestrated } from "./server/ownership";
 import { configuredJudge, enabledJukes, preferences, type JudgeChoice } from "./shared/settings";
 import { JukeIds, type JukeId } from "./shared/jukes";
+import { cancelNudge, pauseAgent, resumeAgent, sendNudgeNow, type NudgeRow, type PauseRow } from "./shared/nudge";
+import { NudgeQueue, PauseBook } from "./server/nudges";
 import {
   isJukeFollowUp,
   JukeFollowUpPrefix,
@@ -26,14 +28,27 @@ export default function contribute(server: PluginServerContext) {
     const epoch = settingsEpoch;
     const state = await settings.read();
     if (state.status !== "ready") throw new Error(`Juke settings unavailable: ${state.error}`);
-    return { enabled: state.values.enabled, jukes: enabledJukes(state.values), prompt: state.values.judgePrompt, judge: configuredJudge(state.values), revision: `${epoch}:${state.revision}` };
+    const values = state.values;
+    return {
+      enabled: values.enabled, jukes: enabledJukes(values), prompt: values.judgePrompt, judge: configuredJudge(values), revision: `${epoch}:${state.revision}`,
+      nudgeDelaySeconds: values.nudgeDelaySeconds, autoResume: { enabled: values.pauseAutoResume, minutes: values.pauseAutoResumeMinutes },
+    };
   });
   return () => { unsubscribe(); stop(); };
 }
 
-type JukeSettings = { enabled: boolean; jukes: readonly JukeId[]; prompt?: string; judge?: JudgeChoice | null; revision: string };
+type JukeSettings = {
+  enabled: boolean; jukes: readonly JukeId[]; prompt?: string; judge?: JudgeChoice | null; revision: string;
+  nudgeDelaySeconds: number; autoResume: { enabled: boolean; minutes: number };
+};
 
-export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => ({ enabled: true, jukes: JukeIds, revision: "default" })) {
+const DefaultSettings: JukeSettings = { enabled: true, jukes: JukeIds, revision: "default", nudgeDelaySeconds: 15, autoResume: { enabled: true, minutes: 5 } };
+
+/** Stable row ids: each agent has one live nudge row and one pause row, replaced in place. */
+const nudgeRowId = (agentId: string) => `nudge:${agentId}`;
+const pauseRowId = (agentId: string) => `pause:${agentId}`;
+
+export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => DefaultSettings) {
   const ownJudgeIds = new Set<string>();
   const generationByAgentId = new Map<string, number>();
   const delegationVersion = new Map<string, number>();
@@ -41,6 +56,30 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
   const activeParents = new Set<string>();
   const seenChildTurns = new Set<string>();
   let stopped = false;
+  const nudges = new NudgeQueue({ log: (message, detail) => console.error(message, detail) });
+  const pauses = new PauseBook();
+  const appendRow = (paseo: PluginHookContext["paseo"], agentId: string, row: { id: string; kind: "nudge"; data: NudgeRow } | { id: string; kind: "pause"; data: PauseRow }) =>
+    paseo.agents.ref(agentId).timeline.append({ type: "plugin", id: row.id, kind: row.kind, version: 1, data: row.data })
+      .then(() => undefined, error => console.error("[juke] failed to show timeline row", { agentId, error }));
+  const pausedNow = async (paseo: PluginHookContext["paseo"], agentId: string, settings: JukeSettings) => {
+    const snapshot = await paseo.agents.ref(agentId).refresh();
+    return pauses.isPaused(agentId, snapshot?.agent?.lastUserMessageAt, settings.autoResume);
+  };
+
+  server.handle(cancelNudge, async ({ agentId }) => ({ canceled: await nudges.withdraw(agentId, "canceled") }));
+  server.handle(sendNudgeNow, async ({ agentId }) => ({ sent: await nudges.sendNow(agentId) }));
+  server.handle(pauseAgent, async ({ agentId }, { paseo }) => {
+    pauses.pause(agentId);
+    await nudges.withdraw(agentId, "paused");
+    const settings = await readSettings();
+    await appendRow(paseo, agentId, { id: pauseRowId(agentId), kind: "pause", data: { paused: true, autoResumeMinutes: settings.autoResume.enabled ? settings.autoResume.minutes : null } });
+    return {};
+  });
+  server.handle(resumeAgent, async ({ agentId }, { paseo }) => {
+    const wasPaused = pauses.resume(agentId);
+    await appendRow(paseo, agentId, { id: pauseRowId(agentId), kind: "pause", data: { paused: false, autoResumeMinutes: null } });
+    return { wasPaused };
+  });
   const changeDelegation = (parentId: string) => delegationVersion.set(parentId, (delegationVersion.get(parentId) ?? 0) + 1);
 
   const advance = (agentId: string) => {
@@ -52,6 +91,8 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
   const removeStarted = server.on("agent.turn_started", ({ agent }, { paseo }) => {
     if (ownJudgeIds.has(agent.id)) return;
     advance(agent.id);
+    // The agent is working again (usually because the user wrote), so a waiting nudge is moot.
+    void nudges.withdraw(agent.id, "superseded");
     if (agent.parentAgentId) {
       changeDelegation(agent.parentAgentId);
       // A grandchild resuming also invalidates an assessment of any idle ancestor.
@@ -84,6 +125,10 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
         };
         const snapshot = await paseo.agents.ref(event.agent.id).refresh();
         if (await isRoleOrchestrated(paseo, snapshot?.agent)) return;
+        if (pauses.isPaused(event.agent.id, snapshot?.agent?.lastUserMessageAt, preferences.autoResume)) {
+          console.log("[juke] assessment skipped: paused with /juke-pause", { agentId: event.agent.id });
+          return;
+        }
         // Without a configured judge, reuse the judged agent. The SDK needs a "provider/model"
         // selection and the hook payload carries only the bare provider, so resolve its live model.
         const model = preferences.judge?.model ?? snapshot?.agent?.runtimeInfo?.model ?? snapshot?.agent?.model;
@@ -160,9 +205,19 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           console.log("[juke] continuation skipped: juke turned off", { agentId: event.agent.id, pattern: verdict.pattern });
           return;
         }
-        await paseo.agents.ref(event.agent.id).send(
-          `${JukeFollowUpPrefix} ${verdict.followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,
-        );
+        const agentId = event.agent.id;
+        const followUp = verdict.followUp;
+        await nudges.enqueue({
+          agentId,
+          pattern: verdict.pattern,
+          followUp,
+          delayMs: preferences.nudgeDelaySeconds * 1000,
+          publish: row => appendRow(paseo, agentId, { id: nudgeRowId(agentId), kind: "nudge", data: row }),
+          stillCurrent: async () => (await current()) && !(await pausedNow(paseo, agentId, preferences)),
+          deliver: () => paseo.agents.ref(agentId).send(
+            `${JukeFollowUpPrefix} ${followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,
+          ).then(() => undefined),
+        });
       } catch (error) {
         console.error("[juke] inference judge failed", { agentId: event.agent.id, error });
       } finally {
@@ -239,6 +294,7 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
 
   return () => {
     stopped = true;
+    void nudges.clear();
     removeStarted();
     removeEnded();
   };
