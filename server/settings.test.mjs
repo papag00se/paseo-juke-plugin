@@ -16,7 +16,7 @@ const deferred = () => { let resolve; const promise = new Promise(done => { reso
 const continueAs = pattern => ({ status: "idle", lastMessage: JSON.stringify({ decision: "continue", pattern, rationale: "Work remains", followUp: "Finish the requested work." }) });
 const verdict = continueAs("announced-then-stopped");
 
-function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, result = verdict, timelineError, fullTimeline = [{ type: "user_message", text: "Finish the work." }], children = [], childTimelines = {}, listError } = {}) {
+function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, result = verdict, timelineError, fullTimeline = [{ type: "user_message", text: "Finish the work." }] } = {}) {
   const hooks = new Map(), created = [], sent = [], archived = [], registered = [];
   // Revisions are content-addressed, not monotonic: false → true restores the
   // original revision. Subscribers must still invalidate the old assessment.
@@ -25,13 +25,9 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
   t.mock.method(console, "log", () => {});
   const agent = { id: "original", workspaceId: "workspace", provider: "test", model: "test-model", labels: {} };
   const paseo = {
-    agents: { list: async ({ filter }) => { if (listError) throw new Error("directory unavailable"); return { entries: children.filter(child => child.labels["paseo.parent-agent-id"] === filter.labels["paseo.parent-agent-id"]).map(agent => ({ agent })), pageInfo: { hasMore: false } }; }, ref: id => ({
+    agents: { ref: id => ({
       refresh: async () => { if (preparation) await preparation.promise; return { agent }; },
-      timeline: { refetch: async () => {
-        if (timelineError) throw new Error("history unavailable");
-        const entries = id === "original" ? fullTimeline : childTimelines[id] ?? [];
-        return { entries: entries.map(entry => "item" in entry ? entry : { item: entry }), hasOlder: false };
-      } },
+      timeline: { refetch: async () => { if (timelineError) throw new Error("history unavailable"); return { entries: fullTimeline.map(item => ({ item })), hasOlder: false }; } },
       send: async message => { sent.push({ id, message }); },
       archive: async () => { archived.push(id); },
     }) },
@@ -105,43 +101,8 @@ test("the judge receives older directions from full history, not only the hook's
   const h = setup(t, { fullTimeline: [{ type: "user_message", text: early }, { type: "user_message", text: "Finish the work." }] });
   await h.fire();
   assert.match(h.created[0].prompt, /Finish every ownership-plan item/);
-  assert.match(h.created[0].prompt, /user-message labels still do not establish human authorship/);
+  assert.match(h.created[0].prompt, /User-message labels do not establish human authorship/);
   assert.match(h.created[0].prompt, /Do not assume a single blocked subtask completes or blocks the entire user goal/);
-});
-
-test("a child's prompt to the parent is labeled a subagent report; unmatched messages remain possible user direction", async t => {
-  const report = 'Coordination notice received: I am child-1. I will not touch #647 or "Dependabot".';
-  const h = setup(t, {
-    fullTimeline: [
-      { item: { type: "user_message", text: "Keep working through the ownership plan." }, timestamp: "2026-10-28T18:00:00.000Z" },
-      { item: { type: "user_message", text: report.replace('"Dependabot"', '\\"Dependabot\\"').replace(". I will", ".\n  I will") }, timestamp: "2026-10-28T18:22:47.770Z" },
-      { item: { type: "user_message", text: "Finish the work." }, timestamp: "2026-10-28T18:30:00.000Z" },
-    ],
-    children: [
-      { id: "child-1", title: "Ownership worker", createdAt: "2026-10-28T18:20:38.000Z", updatedAt: "u1", labels: { "paseo.parent-agent-id": "original" } },
-      { id: "judge-old", title: "Juke inference judge", createdAt: "2026-10-28T18:20:00.000Z", updatedAt: "u1", labels: { "paseo.parent-agent-id": "original", "juke-judge": "original" } },
-    ],
-    childTimelines: { "child-1": [
-      // Rehydrated child timelines can restamp the send later than its delivery.
-      { item: { type: "tool_call", callId: "c", name: "paseo.send_agent_prompt", status: "completed", error: null, detail: { type: "unknown", input: { tool: "paseo_send_agent_prompt", args: { agentId: "original", prompt: report, background: true } } } }, timestamp: "2026-10-31T16:31:46.399Z" },
-    ] },
-  });
-  await h.fire();
-  const evidence = JSON.parse(h.created[0].prompt.split("Conversation evidence:\n")[1]);
-  const reports = evidence.items.filter(item => item.type === "subagent_report");
-  assert.equal(reports.length, 1);
-  assert.equal(reports[0].fromAgentId, "child-1");
-  assert.deepEqual(evidence.items.filter(item => item.type === "user_message").map(item => item.text), ["Keep working through the ownership plan.", "Finish the work."]);
-});
-
-test("classification failure keeps every unmarked message as possible user direction", async t => {
-  const errors = []; t.mock.method(console, "error", (...args) => errors.push(args));
-  const h = setup(t, { listError: true, fullTimeline: [{ type: "user_message", text: "Report from a worker." }, { type: "user_message", text: "Finish the work." }] });
-  await h.fire();
-  assert.equal(h.created.length, 1);
-  assert.match(h.created[0].prompt, /Report from a worker\./);
-  assert.doesNotMatch(h.created[0].prompt.split("Conversation evidence:")[1], /subagent_report/);
-  assert.ok(errors.some(args => String(args[0]).includes("subagent message classification failed")));
 });
 
 test("a history fetch failure is reported and does not judge a partial timeline", async t => {
