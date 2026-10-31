@@ -1,6 +1,6 @@
 {
   "name": "@papagoose/juke",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "Checks completed agent turns for unfinished work and sends a scoped follow-up when appropriate.",
   "repository": {
     "type": "git",
