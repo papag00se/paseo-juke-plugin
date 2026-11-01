@@ -45,8 +45,9 @@ type JukeSettings = {
 const DefaultSettings: JukeSettings = { enabled: true, jukes: JukeIds, revision: "default", nudgeDelaySeconds: 15, autoResume: { enabled: true, minutes: 5 } };
 
 /** Stable row ids: each agent has one live nudge row and one pause row, replaced in place. */
-const nudgeRowId = (agentId: string) => `nudge:${agentId}`;
-const pauseRowId = (agentId: string) => `pause:${agentId}`;
+// The app updates a plugin row in place when its id repeats, so each nudge and pause notice needs
+// its own id; reusing one per agent rewrote the old row far up the history instead of showing a new one.
+const newRowId = (kind: "nudge" | "pause", agentId: string) => `${kind}:${agentId}:${randomUUID()}`;
 
 export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => DefaultSettings) {
   const ownJudgeIds = new Set<string>();
@@ -72,12 +73,12 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
     pauses.pause(agentId);
     await nudges.withdraw(agentId, "paused");
     const settings = await readSettings();
-    await appendRow(paseo, agentId, { id: pauseRowId(agentId), kind: "pause", data: { paused: true, autoResumeMinutes: settings.autoResume.enabled ? settings.autoResume.minutes : null } });
+    await appendRow(paseo, agentId, { id: newRowId("pause", agentId), kind: "pause", data: { paused: true, autoResumeMinutes: settings.autoResume.enabled ? settings.autoResume.minutes : null } });
     return {};
   });
   server.handle(resumeAgent, async ({ agentId }, { paseo }) => {
     const wasPaused = pauses.resume(agentId);
-    await appendRow(paseo, agentId, { id: pauseRowId(agentId), kind: "pause", data: { paused: false, autoResumeMinutes: null } });
+    await appendRow(paseo, agentId, { id: newRowId("pause", agentId), kind: "pause", data: { paused: false, autoResumeMinutes: null } });
     return { wasPaused };
   });
   const changeDelegation = (parentId: string) => delegationVersion.set(parentId, (delegationVersion.get(parentId) ?? 0) + 1);
@@ -207,12 +208,13 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
         }
         const agentId = event.agent.id;
         const followUp = verdict.followUp;
+        const rowId = newRowId("nudge", agentId);
         await nudges.enqueue({
           agentId,
           pattern: verdict.pattern,
           followUp,
           delayMs: preferences.nudgeDelaySeconds * 1000,
-          publish: row => appendRow(paseo, agentId, { id: nudgeRowId(agentId), kind: "nudge", data: row }),
+          publish: row => appendRow(paseo, agentId, { id: rowId, kind: "nudge", data: row }),
           stillCurrent: async () => (await current()) && !(await pausedNow(paseo, agentId, preferences)),
           deliver: () => paseo.agents.ref(agentId).send(
             `${JukeFollowUpPrefix} ${followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,

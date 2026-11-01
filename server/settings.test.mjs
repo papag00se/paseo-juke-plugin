@@ -216,12 +216,18 @@ test("Send now delivers a waiting nudge and Cancel withdraws one", async t => {
   assert.deepEqual(await h.rpc("juke.nudge.cancel", { agentId: "original" }), { canceled: true });
   assert.equal(h.sent.length, 1);
   assert.deepEqual(h.rows.map(row => row.data.state), ["pending", "sent", "pending", "canceled"]);
+  // The app updates a row in place when its id repeats: a nudge keeps one id, a later nudge gets a new one.
+  assert.equal(h.rows[0].id, h.rows[1].id);
+  assert.equal(h.rows[2].id, h.rows[3].id);
+  assert.notEqual(h.rows[0].id, h.rows[2].id);
 });
 
 test("/juke-pause stops assessments for that agent until /juke-resume", async t => {
   const h = setup(t, { judgeValues: { pauseAutoResume: false } });
   await h.rpc("juke.pause", { agentId: "original" });
-  assert.deepEqual(h.rows.at(-1), { type: "plugin", id: "pause:original", kind: "pause", version: 1, data: { paused: true, autoResumeMinutes: null } });
+  const { id: pauseId, ...pauseRow } = h.rows.at(-1);
+  assert.match(pauseId, /^pause:original:/);
+  assert.deepEqual(pauseRow, { type: "plugin", kind: "pause", version: 1, data: { paused: true, autoResumeMinutes: null } });
   await h.fire();
   assert.deepEqual(h.created, []); assert.deepEqual(h.sent, []);
   assert.deepEqual(await h.rpc("juke.resume", { agentId: "original" }), { wasPaused: true });
