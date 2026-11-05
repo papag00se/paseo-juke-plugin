@@ -42,8 +42,8 @@ export function NudgeItem({ agentId, item, theme }: PluginTimelineItemProps<Nudg
   const title = row.state !== "pending" ? OUTCOME[row.state] : stale ? "Juke nudge expired" : remaining > 0 ? `Juke will nudge in ${remaining}s` : "Juke is sending its nudge…";
 
   return <View style={{ gap: 6, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 10, padding: 10, backgroundColor: theme.colors.surface1 }}>
-    <Text style={{ color: theme.colors.foreground, fontWeight: "600" }}>{title}</Text>
-    <Text style={muted}>{patternTitle(row.pattern)}: {row.followUp}</Text>
+    <Text selectable style={{ color: theme.colors.foreground, fontWeight: "600" }}>{title}</Text>
+    <Text selectable style={muted}>{patternTitle(row.pattern)}: {row.followUp}</Text>
     {pending && !stale ? <View style={{ flexDirection: "row", gap: 8 }}>
       <Pressable accessibilityRole="button" disabled={busy} onPress={() => act(() => cancel({ agentId }))}
         style={{ paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.surface2 }}>
@@ -64,5 +64,5 @@ export function PauseItem({ item, theme }: PluginTimelineItemProps<PauseRow>) {
     : autoResumeMinutes === null
       ? "Juke paused for this agent until you run /juke-resume."
       : `Juke paused for this agent. It resumes ${autoResumeMinutes} minute${autoResumeMinutes === 1 ? "" : "s"} after your latest message, or when you run /juke-resume.`;
-  return <Text style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{text}</Text>;
+  return <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{text}</Text>;
 }
