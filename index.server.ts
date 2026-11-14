@@ -2,6 +2,7 @@ import type { PluginServerContext, PluginHookContext, PluginLifecycleEvents } fr
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { randomUUID } from "node:crypto";
 import { childEvidence, idleDelegation, parentTimeline } from "./server/delegation";
+import { awaitFinishNotification, type FinishNotificationTiming } from "./server/finish-notifications";
 import { isRoleOrchestrated } from "./server/ownership";
 import { configuredJudge, enabledJukes, preferences, type JudgeChoice } from "./shared/settings";
 import { JukeIds, type JukeId } from "./shared/jukes";
@@ -49,7 +50,11 @@ const DefaultSettings: JukeSettings = { enabled: true, jukes: JukeIds, revision:
 // its own id; reusing one per agent rewrote the old row far up the history instead of showing a new one.
 const newRowId = (kind: "nudge" | "pause", agentId: string) => `${kind}:${agentId}:${randomUUID()}`;
 
-export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => DefaultSettings) {
+export function originalAutomaticContribution(
+  server: PluginServerContext,
+  readSettings = async (): Promise<JukeSettings> => DefaultSettings,
+  options: { notificationTiming?: Partial<FinishNotificationTiming> } = {},
+) {
   const ownJudgeIds = new Set<string>();
   const generationByAgentId = new Map<string, number>();
   const delegationVersion = new Map<string, number>();
@@ -248,6 +253,16 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           if (!preferences.enabled || !preferences.jukes.includes("abandoned-after-delegation")) continue;
           const tree = await idleDelegation(pending.context.paseo, parentId);
           if (!tree || await isRoleOrchestrated(pending.context.paseo, tree.parent)) continue;
+          // Paseo's own child-finished notification normally resumes an idle parent within seconds.
+          // Judge only if it did not, so a judge is never spent on a parent about to resume itself.
+          const parentGeneration = generationByAgentId.get(parentId) ?? 0;
+          const proceed = await awaitFinishNotification({
+            callerId: parentId,
+            childIds: () => tree.children.map(child => child.id),
+            superseded: () => stopped || delegationVersion.get(parentId) !== version || (generationByAgentId.get(parentId) ?? 0) !== parentGeneration,
+            timing: options.notificationTiming,
+          });
+          if (!proceed) continue;
           const timeline = await parentTimeline(pending.context.paseo, parentId);
           const evidence = await childEvidence(pending.context.paseo, tree.children, pending.event.agent.id);
           const stillCurrent = async () => {
