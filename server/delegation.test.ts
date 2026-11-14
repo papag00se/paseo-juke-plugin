@@ -35,7 +35,7 @@ function harness(options: { disabled?: boolean; judgeWait?: Promise<any> } = {})
   };
   const server = { on: (name: string, handler: Function) => { hooks.set(name, handler); return () => hooks.delete(name); }, handle: () => {} } as unknown as PluginServerContext;
   // Nudges send at once here; the countdown has its own tests.
-  const stop = originalAutomaticContribution(server, async () => ({ enabled: true, jukes: options.disabled ? JukeIds.filter(id => id !== "abandoned-after-delegation") : JukeIds, revision: "one", nudgeDelaySeconds: 0, autoResume: { enabled: true, minutes: 5 } }));
+  const stop = originalAutomaticContribution(server, async () => ({ enabled: true, jukes: options.disabled ? JukeIds.filter(id => id !== "abandoned-after-delegation") : JukeIds, revision: "one", nudgeDelaySeconds: 0, autoResume: { enabled: true, minutes: 5 } }), { notificationTiming: { graceMs: 0 } });
   const fire = (id = "two", parent = "parent") => hooks.get("agent.turn_ended")!(event(id, parent), { paseo });
   const start = (id = "one") => hooks.get("agent.turn_started")!({ agent: { ...agent(id), parentAgentId: "parent" }, turnId: "new" }, { paseo });
   return { list, paseo, sent, prompts, fire, start, stop };

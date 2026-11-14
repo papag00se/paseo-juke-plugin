@@ -35,7 +35,7 @@ A "juke" is an agent faking the end of a turn while work is still owed. Juke cat
 
 Juke leaves the agent alone when you only asked a question, asked for a plan or a status-only answer, said to hold off, asked for a checkpoint, or truly changed direction. It also stays out when the work is really done or really blocked, when only you have the answer or the access (a password, your account, a choice of approach), or when the next step is risky or out of scope (deleting, publishing, spending money).
 
-For delegated work, Juke also checks the idle parent when a child finishes and all its known descendants have stopped. It assesses their results rather than assuming that stopped agents imply unfinished work. This check uses lifecycle events while Juke is running; it does not reconstruct missed events after a reload.
+For delegated work, Juke also checks the idle parent when a child finishes and all its known descendants have stopped. It assesses their results rather than assuming that stopped agents imply unfinished work. Before judging, Juke lets Paseo's own child-finished notification reach the parent: it waits while that notification is still pending (up to 60 seconds), then gives the parent 3 seconds to start a turn, and skips the judge if it did. This check uses lifecycle events while Juke is running; it does not reconstruct missed events after a reload.
 
 Each juke has a switch with the same title in settings. Logs show its short id (for example `derailed-by-steering`). [Exact judging rules →](docs/REFERENCE.md)
 

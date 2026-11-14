@@ -2,6 +2,7 @@ import type { PluginServerContext, PluginHookContext, PluginLifecycleEvents } fr
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import { randomUUID } from "node:crypto";
 import { childEvidence, idleDelegation, parentTimeline } from "./server/delegation";
+import { awaitFinishNotification, type FinishNotificationTiming } from "./server/finish-notifications";
 import { isRoleOrchestrated } from "./server/ownership";
 import { configuredJudge, enabledJukes, preferences, type JudgeChoice } from "./shared/settings";
 import { JukeIds, type JukeId } from "./shared/jukes";
@@ -45,10 +46,15 @@ type JukeSettings = {
 const DefaultSettings: JukeSettings = { enabled: true, jukes: JukeIds, revision: "default", nudgeDelaySeconds: 15, autoResume: { enabled: true, minutes: 5 } };
 
 /** Stable row ids: each agent has one live nudge row and one pause row, replaced in place. */
-const nudgeRowId = (agentId: string) => `nudge:${agentId}`;
-const pauseRowId = (agentId: string) => `pause:${agentId}`;
+// The app updates a plugin row in place when its id repeats, so each nudge and pause notice needs
+// its own id; reusing one per agent rewrote the old row far up the history instead of showing a new one.
+const newRowId = (kind: "nudge" | "pause", agentId: string) => `${kind}:${agentId}:${randomUUID()}`;
 
-export function originalAutomaticContribution(server: PluginServerContext, readSettings = async (): Promise<JukeSettings> => DefaultSettings) {
+export function originalAutomaticContribution(
+  server: PluginServerContext,
+  readSettings = async (): Promise<JukeSettings> => DefaultSettings,
+  options: { notificationTiming?: Partial<FinishNotificationTiming> } = {},
+) {
   const ownJudgeIds = new Set<string>();
   const generationByAgentId = new Map<string, number>();
   const delegationVersion = new Map<string, number>();
@@ -72,12 +78,12 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
     pauses.pause(agentId);
     await nudges.withdraw(agentId, "paused");
     const settings = await readSettings();
-    await appendRow(paseo, agentId, { id: pauseRowId(agentId), kind: "pause", data: { paused: true, autoResumeMinutes: settings.autoResume.enabled ? settings.autoResume.minutes : null } });
+    await appendRow(paseo, agentId, { id: newRowId("pause", agentId), kind: "pause", data: { paused: true, autoResumeMinutes: settings.autoResume.enabled ? settings.autoResume.minutes : null } });
     return {};
   });
   server.handle(resumeAgent, async ({ agentId }, { paseo }) => {
     const wasPaused = pauses.resume(agentId);
-    await appendRow(paseo, agentId, { id: pauseRowId(agentId), kind: "pause", data: { paused: false, autoResumeMinutes: null } });
+    await appendRow(paseo, agentId, { id: newRowId("pause", agentId), kind: "pause", data: { paused: false, autoResumeMinutes: null } });
     return { wasPaused };
   });
   const changeDelegation = (parentId: string) => delegationVersion.set(parentId, (delegationVersion.get(parentId) ?? 0) + 1);
@@ -207,12 +213,13 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
         }
         const agentId = event.agent.id;
         const followUp = verdict.followUp;
+        const rowId = newRowId("nudge", agentId);
         await nudges.enqueue({
           agentId,
           pattern: verdict.pattern,
           followUp,
           delayMs: preferences.nudgeDelaySeconds * 1000,
-          publish: row => appendRow(paseo, agentId, { id: nudgeRowId(agentId), kind: "nudge", data: row }),
+          publish: row => appendRow(paseo, agentId, { id: rowId, kind: "nudge", data: row }),
           stillCurrent: async () => (await current()) && !(await pausedNow(paseo, agentId, preferences)),
           deliver: () => paseo.agents.ref(agentId).send(
             `${JukeFollowUpPrefix} ${followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,
@@ -246,6 +253,16 @@ export function originalAutomaticContribution(server: PluginServerContext, readS
           if (!preferences.enabled || !preferences.jukes.includes("abandoned-after-delegation")) continue;
           const tree = await idleDelegation(pending.context.paseo, parentId);
           if (!tree || await isRoleOrchestrated(pending.context.paseo, tree.parent)) continue;
+          // Paseo's own child-finished notification normally resumes an idle parent within seconds.
+          // Judge only if it did not, so a judge is never spent on a parent about to resume itself.
+          const parentGeneration = generationByAgentId.get(parentId) ?? 0;
+          const proceed = await awaitFinishNotification({
+            callerId: parentId,
+            childIds: () => tree.children.map(child => child.id),
+            superseded: () => stopped || delegationVersion.get(parentId) !== version || (generationByAgentId.get(parentId) ?? 0) !== parentGeneration,
+            timing: options.notificationTiming,
+          });
+          if (!proceed) continue;
           const timeline = await parentTimeline(pending.context.paseo, parentId);
           const evidence = await childEvidence(pending.context.paseo, tree.children, pending.event.agent.id);
           const stillCurrent = async () => {
