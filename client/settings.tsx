@@ -44,8 +44,8 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
           options={withCurrent(DelayChoices, values.nudgeDelaySeconds).map(seconds => ({ value: String(seconds), label: seconds === 0 ? "Don't wait" : `${seconds} seconds` }))}
           onValueChange={value => save({ nudgeDelaySeconds: Number(value) })} />
         <SettingsSwitch label="Resume automatically after /juke-pause" value={values.pauseAutoResume} disabled={settings.saving}
-          hint="Otherwise a paused agent stays paused until /juke-resume." onValueChange={pauseAutoResume => save({ pauseAutoResume })} />
-        {values.pauseAutoResume ? <SettingsSelect label="Resume after your latest message" value={String(values.pauseAutoResumeMinutes)} disabled={settings.saving}
+          hint="Any activity from you or the agent restarts the count. Otherwise a paused agent stays paused until /juke-resume." onValueChange={pauseAutoResume => save({ pauseAutoResume })} />
+        {values.pauseAutoResume ? <SettingsSelect label="Resume after this much inactivity" value={String(values.pauseAutoResumeMinutes)} disabled={settings.saving}
           options={withCurrent(ResumeChoices, values.pauseAutoResumeMinutes).map(minutes => ({ value: String(minutes), label: `${minutes} minute${minutes === 1 ? "" : "s"}` }))}
           onValueChange={value => save({ pauseAutoResumeMinutes: Number(value) })} /> : null}
       </SettingsCard>

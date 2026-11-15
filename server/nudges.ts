@@ -97,9 +97,13 @@ export class NudgeQueue {
   }
 }
 
-/** Per-agent pauses from /juke-pause. Auto-resume is evaluated lazily from the agent's latest user message. */
+/**
+ * Per-agent pauses from /juke-pause. With auto-resume on, a pause lifts after `minutes` of silence:
+ * no turn running or starting for that agent, from the user or the model. Any activity restarts the count.
+ */
 export class PauseBook {
   private readonly pausedAt = new Map<string, number>();
+  private readonly lastActiveAt = new Map<string, number>();
   private readonly now: () => number;
 
   constructor(now: () => number = Date.now) {
@@ -111,16 +115,28 @@ export class PauseBook {
   resume(agentId: string): boolean { return this.pausedAt.delete(agentId); }
 
   /**
-   * Whether Juke should leave the agent alone. With auto-resume on, the pause lifts once
-   * `minutes` pass after the later of the pause and the user's latest message.
+   * A turn is starting. A pause that already saw `minutes` of silence lifts first; the turn itself
+   * is then activity. `at` is when the turn started, since settings may be read after it.
    */
-  isPaused(agentId: string, lastUserMessageAt: string | null | undefined, autoResume: { enabled: boolean; minutes: number }): boolean {
+  noteTurnStart(agentId: string, autoResume: { enabled: boolean; minutes: number }, at: number = this.now()): void {
+    this.isPaused(agentId, autoResume, at);
+    this.touch(agentId, at);
+  }
+
+  /** A turn ended: the whole turn, however long, counts as activity. */
+  noteTurnEnd(agentId: string): void { this.touch(agentId, this.now()); }
+
+  private touch(agentId: string, at: number): void {
+    this.lastActiveAt.set(agentId, Math.max(this.lastActiveAt.get(agentId) ?? at, at));
+  }
+
+  /** Whether Juke should leave the agent alone. Lifts the pause once it has been silent long enough. */
+  isPaused(agentId: string, autoResume: { enabled: boolean; minutes: number }, at: number = this.now()): boolean {
     const pausedAt = this.pausedAt.get(agentId);
     if (pausedAt === undefined) return false;
     if (!autoResume.enabled) return true;
-    const lastUser = lastUserMessageAt ? Date.parse(lastUserMessageAt) : NaN;
-    const since = Math.max(pausedAt, Number.isFinite(lastUser) ? lastUser : pausedAt);
-    if (this.now() < since + autoResume.minutes * 60_000) return true;
+    const since = Math.max(pausedAt, this.lastActiveAt.get(agentId) ?? pausedAt);
+    if (at < since + autoResume.minutes * 60_000) return true;
     this.pausedAt.delete(agentId);
     return false;
   }

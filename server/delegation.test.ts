@@ -1,3 +1,6 @@
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import type { PluginServerContext } from "@getpaseo/plugin/server";
 import { originalAutomaticContribution } from "../index.server";
@@ -12,7 +15,9 @@ const agent = (id: string, parent?: string, status = "idle") => ({
 const event = (id: string, parent: string | null) => ({
   agent: { ...agent(id), parentAgentId: parent }, turnId: `turn-${id}`, outcome: { kind: "failed", error: { message: "finished" } }, timeline: [],
 });
-const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(resolve => setImmediate(resolve)); };
+// The delegation check reads Paseo's finish-notification store from disk, so wait on real timers.
+process.env.PASEO_HOME = mkdtempSync(join(tmpdir(), "juke-delegation-test-"));
+const flush = async () => { for (let i = 0; i < 12; i++) await new Promise(resolve => setTimeout(resolve, 5)); };
 
 function harness(options: { disabled?: boolean; judgeWait?: Promise<any> } = {}) {
   const hooks = new Map<string, Function>();

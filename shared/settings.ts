@@ -17,7 +17,7 @@ export const preferences = defineSettings({
     disabledJukes: z.array(z.string()).default([]),
     // Seconds a nudge waits, cancellable, before Juke sends it. 0 sends immediately.
     nudgeDelaySeconds: z.number().int().min(0).max(600).default(15),
-    // /juke-pause lifts itself this long after the user's latest message, unless turned off.
+    // /juke-pause lifts itself after this long with no activity from the user or the agent, unless turned off.
     pauseAutoResume: z.boolean().default(true),
     pauseAutoResumeMinutes: z.number().int().min(1).max(1440).default(5),
   }),

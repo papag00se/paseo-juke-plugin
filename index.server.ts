@@ -67,10 +67,6 @@ export function originalAutomaticContribution(
   const appendRow = (paseo: PluginHookContext["paseo"], agentId: string, row: { id: string; kind: "nudge"; data: NudgeRow } | { id: string; kind: "pause"; data: PauseRow }) =>
     paseo.agents.ref(agentId).timeline.append({ type: "plugin", id: row.id, kind: row.kind, version: 1, data: row.data })
       .then(() => undefined, error => console.error("[juke] failed to show timeline row", { agentId, error }));
-  const pausedNow = async (paseo: PluginHookContext["paseo"], agentId: string, settings: JukeSettings) => {
-    const snapshot = await paseo.agents.ref(agentId).refresh();
-    return pauses.isPaused(agentId, snapshot?.agent?.lastUserMessageAt, settings.autoResume);
-  };
 
   server.handle(cancelNudge, async ({ agentId }) => ({ canceled: await nudges.withdraw(agentId, "canceled") }));
   server.handle(sendNudgeNow, async ({ agentId }) => ({ sent: await nudges.sendNow(agentId) }));
@@ -96,17 +92,23 @@ export function originalAutomaticContribution(
 
   const removeStarted = server.on("agent.turn_started", ({ agent }, { paseo }) => {
     if (ownJudgeIds.has(agent.id)) return;
+    const startedAt = Date.now();
+    void readSettings().then(settings => pauses.noteTurnStart(agent.id, settings.autoResume, startedAt), error => console.error("[juke] could not update pause activity", { agentId: agent.id, error }));
     advance(agent.id);
     // The agent is working again (usually because the user wrote), so a waiting nudge is moot.
     void nudges.withdraw(agent.id, "superseded");
     if (agent.parentAgentId) {
       changeDelegation(agent.parentAgentId);
       // A grandchild resuming also invalidates an assessment of any idle ancestor.
+      // Work anywhere below an agent is activity for its pause, too.
       void (async () => {
+        const { autoResume } = await readSettings();
         let id: string | null = agent.parentAgentId;
         const seen = new Set<string>();
-        while (id && !seen.has(id)) {
+        while (id) {
+          if (seen.has(id)) break;
           seen.add(id);
+          pauses.noteTurnStart(id, autoResume, startedAt);
           const snapshot = await paseo.agents.ref(id).refresh();
           id = getParentAgentIdFromLabels(snapshot?.agent?.labels) ?? null;
           if (id && !seen.has(id)) changeDelegation(id);
@@ -131,7 +133,7 @@ export function originalAutomaticContribution(
         };
         const snapshot = await paseo.agents.ref(event.agent.id).refresh();
         if (await isRoleOrchestrated(paseo, snapshot?.agent)) return;
-        if (pauses.isPaused(event.agent.id, snapshot?.agent?.lastUserMessageAt, preferences.autoResume)) {
+        if (pauses.isPaused(event.agent.id, preferences.autoResume)) {
           console.log("[juke] assessment skipped: paused with /juke-pause", { agentId: event.agent.id });
           return;
         }
@@ -220,7 +222,7 @@ export function originalAutomaticContribution(
           followUp,
           delayMs: preferences.nudgeDelaySeconds * 1000,
           publish: row => appendRow(paseo, agentId, { id: rowId, kind: "nudge", data: row }),
-          stillCurrent: async () => (await current()) && !(await pausedNow(paseo, agentId, preferences)),
+          stillCurrent: async () => (await current()) && !pauses.isPaused(agentId, preferences.autoResume),
           deliver: () => paseo.agents.ref(agentId).send(
             `${JukeFollowUpPrefix} ${followUp}\n\nCarry this out now. Do not stop at a plan or promise; if you are truly blocked, ask the user one specific question.`,
           ).then(() => undefined),
@@ -285,6 +287,9 @@ export function originalAutomaticContribution(
 
   const removeEnded = server.on("agent.turn_ended", (event, context) => {
     if (ownJudgeIds.has(event.agent.id)) return;
+    // A turn ending anywhere below an agent is activity for its pause. Touch before any review runs.
+    pauses.noteTurnEnd(event.agent.id);
+    if (event.agent.parentAgentId) pauses.noteTurnEnd(event.agent.parentAgentId);
     const key = event.turnId && `${event.agent.id}:${event.turnId}`;
     if (!key || !seenChildTurns.has(key)) {
       if (event.agent.parentAgentId && key) {
@@ -300,7 +305,7 @@ export function originalAutomaticContribution(
             seen.add(id);
             const snapshot = await context.paseo.agents.ref(id).refresh();
             id = getParentAgentIdFromLabels(snapshot?.agent?.labels) ?? null;
-            if (id && !seen.has(id)) reviewParent(event, context, id);
+            if (id && !seen.has(id)) { pauses.noteTurnEnd(id); reviewParent(event, context, id); }
           }
         })().catch(error => console.error("[juke] failed to inspect delegation ancestry", error));
       }
