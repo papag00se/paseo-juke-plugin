@@ -14,7 +14,7 @@ export type NudgeRow = z.output<typeof nudgeRowSchema>;
 /** A pause or resume notice for one agent. */
 export const pauseRowSchema = z.object({
   paused: z.boolean(),
-  /** Minutes after the user's latest message that the pause lifts itself, or null if it never does. */
+  /** Minutes without activity from the user or the agent after which the pause lifts itself, or null if it never does. */
   autoResumeMinutes: z.number().nullable(),
 });
 export type PauseRow = z.output<typeof pauseRowSchema>;

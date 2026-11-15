@@ -52,7 +52,7 @@ Each juke has a switch with the same title in settings. Logs show its short id (
 | ✏️ Editable judge prompt | Save custom instructions or reset to the original prompt |
 | ⏸️ One-switch pause | Turn automatic assessments off without removing the plugin |
 | ⏳ Cancellable countdown | A nudge waits 15 seconds (configurable) in the chat with **Cancel** and **Send now**; your own message withdraws it |
-| 🤫 Per-agent pause | `/juke-pause` and `/juke-resume`; a pause lifts itself 5 minutes (configurable) after your latest message unless you turn that off |
+| 🤫 Per-agent pause | `/juke-pause` and `/juke-resume`; a pause lifts itself after 5 minutes (configurable) with no activity from you or the agent unless you turn that off |
 
 ## How it fits
 

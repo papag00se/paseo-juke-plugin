@@ -80,18 +80,31 @@ describe("NudgeQueue", () => {
 
 describe("PauseBook", () => {
   const minutes = (n: number) => n * 60_000;
-  it("auto-resumes a set time after the later of the pause and the user's latest message", () => {
+  it("auto-resumes after a set time of silence; any activity from the agent or the user restarts the count", () => {
     let now = Date.parse("2026-10-31T12:00:00Z");
     const book = new PauseBook(() => now);
-    book.pause("a");
     const autoResume = { enabled: true, minutes: 5 };
+    book.pause("a");
     now += minutes(3);
-    const lastUser = new Date(now).toISOString();
+    book.noteTurnStart("a", autoResume); // the user writes, or the agent starts working
+    now += minutes(20); // a long turn is activity throughout
+    book.noteTurnEnd("a");
+    expect(book.isPaused("a", autoResume)).toBe(true);
     now += minutes(4);
-    expect(book.isPaused("a", lastUser, autoResume)).toBe(true);
+    expect(book.isPaused("a", autoResume)).toBe(true);
     now += minutes(1);
-    expect(book.isPaused("a", lastUser, autoResume)).toBe(false);
-    expect(book.isPaused("a", null, autoResume)).toBe(false);
+    expect(book.isPaused("a", autoResume)).toBe(false);
+  });
+
+  it("lifts a pause that was silent long enough before the next turn starts", () => {
+    let now = 0;
+    const book = new PauseBook(() => now);
+    const autoResume = { enabled: true, minutes: 5 };
+    book.pause("a");
+    now += minutes(6);
+    book.noteTurnStart("a", autoResume);
+    now += minutes(1);
+    expect(book.isPaused("a", autoResume)).toBe(false);
   });
 
   it("stays paused until /juke-resume when auto-resume is off", () => {
@@ -99,9 +112,9 @@ describe("PauseBook", () => {
     const book = new PauseBook(() => now);
     book.pause("a");
     now += minutes(600);
-    expect(book.isPaused("a", null, { enabled: false, minutes: 5 })).toBe(true);
+    expect(book.isPaused("a", { enabled: false, minutes: 5 })).toBe(true);
     expect(book.resume("a")).toBe(true);
-    expect(book.isPaused("a", null, { enabled: false, minutes: 5 })).toBe(false);
-    expect(book.isPaused("b", null, { enabled: false, minutes: 5 })).toBe(false);
+    expect(book.isPaused("a", { enabled: false, minutes: 5 })).toBe(false);
+    expect(book.isPaused("b", { enabled: false, minutes: 5 })).toBe(false);
   });
 });

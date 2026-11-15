@@ -63,6 +63,6 @@ export function PauseItem({ item, theme }: PluginTimelineItemProps<PauseRow>) {
     ? "Juke resumed for this agent."
     : autoResumeMinutes === null
       ? "Juke paused for this agent until you run /juke-resume."
-      : `Juke paused for this agent. It resumes ${autoResumeMinutes} minute${autoResumeMinutes === 1 ? "" : "s"} after your latest message, or when you run /juke-resume.`;
+      : `Juke paused for this agent. It resumes ${autoResumeMinutes} minute${autoResumeMinutes === 1 ? "" : "s"} with no activity from you or the agent, or when you run /juke-resume.`;
   return <Text selectable style={{ color: theme.colors.foregroundMuted, fontSize: 13 }}>{text}</Text>;
 }
