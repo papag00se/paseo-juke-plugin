@@ -1,5 +1,6 @@
 import type { PluginServerContext, PluginHookContext, PluginLifecycleEvents } from "@getpaseo/plugin/server";
 import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
+import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { randomUUID } from "node:crypto";
 import { childEvidence, idleDelegation, parentTimeline } from "./server/delegation";
 import { awaitFinishNotification, type FinishNotificationTiming } from "./server/finish-notifications";
@@ -117,7 +118,9 @@ export function originalAutomaticContribution(
     }
   });
 
-  const assess = (event: PluginLifecycleEvents["agent.turn_ended"], { paseo }: PluginHookContext, delegation?: { evidence: string; stillCurrent: () => Promise<boolean> }) => {
+  // Only the fields assessment reads, so a delegation review can stand in for a turn-ended event.
+  type AssessedTurn = { agent: Pick<PluginLifecycleEvents["agent.turn_ended"]["agent"], "id" | "workspaceId" | "provider">; turnId: string | null };
+  const assess = (event: AssessedTurn, { paseo }: PluginHookContext, delegation?: { evidence: string; stillCurrent: () => Promise<boolean>; timeline: AgentTimelineItem[] }) => {
     const generation = advance(event.agent.id);
     // Inference can outlive the lifecycle hook deadline, so keep it detached after recording
     // the current generation. The generation check is staleness protection, not a judgement.
@@ -153,8 +156,10 @@ export function originalAutomaticContribution(
         if (!(await current())) return;
         // Hook payloads can contain only a tail after a daemon/session reload. Fetch the
         // complete canonical history so earlier user direction is never silently dropped.
-        const timeline = delegation ? event.timeline : await parentTimeline(paseo, event.agent.id);
+        const timeline = delegation ? delegation.timeline : await parentTimeline(paseo, event.agent.id);
         if (!(await current())) return;
+        // Lifecycle events no longer carry history, so Juke's own follow-up turn is recognised here.
+        if (!delegation && isJukeFollowUp(timeline)) return;
         reservedJudgeId = randomUUID();
         ownJudgeIds.add(reservedJudgeId);
         const judge = await paseo.workspaces.ref(event.agent.workspaceId).agents.create({
@@ -273,7 +278,7 @@ export function originalAutomaticContribution(
             return !!latest && latest.children.length === tree.children.length && latest.children.every(child => tree.children.some(old => old.id === child.id));
           };
           if (!(await stillCurrent())) continue;
-          assess({ agent: { id: parentId, parentAgentId: null, workspaceId: tree.parent.workspaceId ?? null, provider: tree.parent.provider, cwd: tree.parent.cwd, title: tree.parent.title }, turnId: null, outcome: { kind: "completed" }, timeline }, pending.context, { evidence, stillCurrent });
+          assess({ agent: { id: parentId, workspaceId: tree.parent.workspaceId ?? null, provider: tree.parent.provider }, turnId: null }, pending.context, { evidence, stillCurrent, timeline });
         }
       } catch (error) {
         console.error("[juke] delegated-agent assessment failed", { parentId, error });
@@ -310,7 +315,7 @@ export function originalAutomaticContribution(
         })().catch(error => console.error("[juke] failed to inspect delegation ancestry", error));
       }
     }
-    if (event.outcome.kind !== "completed" || isJukeFollowUp(event.timeline)) return;
+    if (event.outcome.kind !== "completed") return;
     assess(event, context);
   });
 
