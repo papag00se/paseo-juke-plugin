@@ -3,7 +3,8 @@ import { getParentAgentIdFromLabels } from "@getpaseo/protocol/agent-labels";
 import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { randomUUID } from "node:crypto";
 import { childEvidence, descendantSnapshot, idleDelegation, parentTimeline } from "./server/delegation";
-import { JudgeSessions, mergeLedger, RotateAfterChars } from "./server/judge-sessions";
+import { backgroundEvidence } from "./server/background";
+import { JudgeSessions, mergeLedger, RecentItemsOnRestart, RotateAfterChars } from "./server/judge-sessions";
 import { profileFor, type ResolvedProfile } from "./server/profiles";
 import { awaitFinishNotification, type FinishNotificationTiming } from "./server/finish-notifications";
 import { isRoleOrchestrated, isRoleOrchestratorHelper } from "./server/ownership";
@@ -136,6 +137,7 @@ export function originalAutomaticContribution(
   type DelegationReview = { evidence: string; stillCurrent: () => Promise<boolean>; timeline: AgentTimelineItem[]; resolved: ResolvedProfile | null };
   const assess = (event: AssessedTurn, { paseo }: PluginHookContext, delegation?: DelegationReview) => {
     const generation = advance(event.agent.id);
+    const endedAt = Date.now();
     // Inference can outlive the lifecycle hook deadline, so keep it detached after recording
     // the current generation. The generation check is staleness protection, not a judgement.
     void (async () => {
@@ -192,11 +194,17 @@ export function originalAutomaticContribution(
         const instructions = judgeInstructions(checks, preferences.prompt, preferences.jukes, profile);
         const thinking = choice?.thinkingOptionId ?? null;
         const key = JSON.stringify([selection, thinking, instructions]);
-        // Running subagents are evidence of in-flight work. An unreadable directory is said so, never guessed.
-        const liveContext = await descendantSnapshot(paseo, agentId, ownJudgeIds).then(
-          (snapshot) => `Live descendant snapshot (status and permission counts, not proof of task coverage): ${JSON.stringify(snapshot)}`,
-          (error) => { console.error("[juke] descendant snapshot unavailable", { agentId, error }); return "Live descendant snapshot: unavailable."; },
-        );
+        // Running subagents and background work are evidence of in-flight work. An unreadable source is
+        // said so, never guessed.
+        const descendants = await descendantSnapshot(paseo, agentId, ownJudgeIds).catch((error) => {
+          console.error("[juke] descendant snapshot unavailable", { agentId, error });
+          return null;
+        });
+        const background = await backgroundEvidence([agentId, ...(descendants ?? []).map((agent) => agent.id)], endedAt);
+        const liveContext = [
+          descendants ? `Live descendant snapshot (status and permission counts, not proof of task coverage): ${JSON.stringify(descendants)}` : "Live descendant snapshot: unavailable.",
+          ...(background ? [background] : []),
+        ].join("\n\n");
 
         await sessions.load();
         const outcome = await sessions.exclusive(agentId, async () => {
@@ -219,7 +227,11 @@ export function originalAutomaticContribution(
             }
           }
           if (!result) {
-            const message = initialJudgeMessage(instructions, timeline, session.ledger, delegation?.evidence, liveContext);
+            // A replacement judge session (rotation, a model or instruction change, a lost judge) starts
+            // from the ask ledger and the recent conversation; only an agent's first judge reads it all.
+            const seeded = session.judgedItems > 0 && session.ledger.length > 0;
+            const recent = seeded ? timeline.slice(-RecentItemsOnRestart) : timeline;
+            const message = initialJudgeMessage(instructions, recent, session.ledger, delegation?.evidence, liveContext, seeded ? timeline.length - recent.length : 0);
             const reserved = randomUUID();
             ownJudgeIds.add(reserved);
             const judge = await paseo.workspaces.ref(event.agent.workspaceId!).agents.create({
