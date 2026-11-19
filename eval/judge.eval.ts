@@ -60,7 +60,7 @@ const patternOk = (c: EvalCase, run: Run) =>
   [c.expected].flat().some(
     (expected) =>
       run.verdict?.decision === expected.decision &&
-      (expected.decision !== "continue" || expected.pattern === undefined || [expected.pattern].flat().includes(run.verdict.pattern!)),
+      (expected.decision !== "continue" || expected.pattern === undefined || ([expected.pattern].flat() as string[]).includes(run.verdict.pattern!)),
   );
 const describeExpected = (c: EvalCase) =>
   [c.expected]

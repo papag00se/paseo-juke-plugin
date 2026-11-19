@@ -12,6 +12,10 @@ export const preferences = defineSettings({
     judgeProvider: z.string().default(""),
     judgeModel: z.string().default(""),
     judgeThinkingOptionId: z.string().nullable().default(null),
+    // The judge for strict-profile agents (Role Orchestrator's gated roles). Empty: use the judge above.
+    strictJudgeProvider: z.string().default(""),
+    strictJudgeModel: z.string().default(""),
+    strictJudgeThinkingOptionId: z.string().nullable().default(null),
     // Jukes are on unless listed here, so a newly added juke starts on. Plain strings, so a
     // stored id for a juke that no longer exists cannot invalidate the user's other settings.
     disabledJukes: z.array(z.string()).default([]),
@@ -29,6 +33,13 @@ export type JudgeChoice = { provider: string; model: string; thinkingOptionId: s
 export function configuredJudge(values: { judgeProvider: string; judgeModel: string; judgeThinkingOptionId: string | null }): JudgeChoice | null {
   return values.judgeProvider && values.judgeModel
     ? { provider: values.judgeProvider, model: values.judgeModel, thinkingOptionId: values.judgeThinkingOptionId }
+    : null;
+}
+
+/** The judge for strict-profile agents, or null to use the regular judge. */
+export function configuredStrictJudge(values: { strictJudgeProvider: string; strictJudgeModel: string; strictJudgeThinkingOptionId: string | null }): JudgeChoice | null {
+  return values.strictJudgeProvider && values.strictJudgeModel
+    ? { provider: values.strictJudgeProvider, model: values.strictJudgeModel, thinkingOptionId: values.strictJudgeThinkingOptionId }
     : null;
 }
 

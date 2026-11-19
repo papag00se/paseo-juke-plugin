@@ -23,23 +23,39 @@ export function genuinelyIdle(agent: PaseoAgent | undefined): boolean {
   return !!agent && !agent.archivedAt && agent.status === "idle" && !agent.activeTurn && !agent.pendingPermissions?.length;
 }
 
-/** Include descendants, not only immediate children; a running grandchild still has work in flight. */
-export async function idleDelegation(paseo: PaseoApi, parentId: string): Promise<{ parent: PaseoAgent; children: PaseoAgent[] } | null> {
-  const all = await agents(paseo);
-  const parent = all.find(agent => agent.id === parentId);
-  if (!genuinelyIdle(parent)) return null;
+function descendants(all: PaseoAgent[], parentId: string, exclude: ReadonlySet<string> = new Set()): PaseoAgent[] {
   const children: PaseoAgent[] = [];
   const ids = new Set([parentId]);
   for (let old = -1; old !== ids.size;) {
     old = ids.size;
     for (const agent of all) {
-      if (agent.archivedAt || agent.labels?.[JukeJudgeLabel] || ids.has(agent.id)) continue;
+      if (agent.archivedAt || agent.labels?.[JukeJudgeLabel] || exclude.has(agent.id) || ids.has(agent.id)) continue;
       const parent = getParentAgentIdFromLabels(agent.labels);
       if (parent && ids.has(parent)) { ids.add(agent.id); children.push(agent); }
     }
   }
-  if (!children.length || children.some(child => !["idle", "error", "closed"].includes(child.status) || child.activeTurn || child.pendingPermissions?.length)) return null;
+  return children;
+}
+
+/**
+ * Include descendants, not only immediate children; a running grandchild still has work in flight.
+ * With `allowRunning`, a finished result is reviewed even while siblings still work.
+ */
+export async function idleDelegation(paseo: PaseoApi, parentId: string, allowRunning = false): Promise<{ parent: PaseoAgent; children: PaseoAgent[] } | null> {
+  const all = await agents(paseo);
+  const parent = all.find(agent => agent.id === parentId);
+  if (!genuinelyIdle(parent)) return null;
+  const children = descendants(all, parentId);
+  const busy = (child: PaseoAgent) => !["idle", "error", "closed"].includes(child.status) || !!child.activeTurn || !!child.pendingPermissions?.length;
+  if (!children.length || (allowRunning ? children.every(busy) : children.some(busy))) return null;
   return { parent: parent!, children };
+}
+
+/** A live descendant snapshot is evidence of in-flight work, not proof that it covers the ask. */
+export async function descendantSnapshot(paseo: PaseoApi, parentId: string, exclude: ReadonlySet<string>) {
+  return descendants(await agents(paseo), parentId, exclude).map(agent => ({
+    id: agent.id, status: agent.status, title: agent.title, pendingPermissions: agent.pendingPermissions?.length ?? 0,
+  }));
 }
 
 /** Fetch the parent's full conversation so older user intent isn't lost to tail pagination. */
