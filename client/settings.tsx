@@ -57,12 +57,7 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
       choice={{ provider: values.judgeProvider, model: values.judgeModel, thinking: values.judgeThinkingOptionId }}
       onChange={next => save({ judgeProvider: next.provider, judgeModel: next.model, judgeThinkingOptionId: next.thinking })}
       providers={catalog.data ?? []} saving={settings.saving} theme={theme}
-      note="Each agent keeps one judge session that only receives what happened since its last verdict, so the provider can reuse its cache. Each assessment is listed in this plugin's Logs menu." />
-    <JudgeModelSection title="Strict judge model" sameLabel="Same as the judge model above" fallback="the judge model above"
-      choice={{ provider: values.strictJudgeProvider, model: values.strictJudgeModel, thinking: values.strictJudgeThinkingOptionId }}
-      onChange={next => save({ strictJudgeProvider: next.provider, strictJudgeModel: next.model, strictJudgeThinkingOptionId: next.thinking })}
-      providers={catalog.data ?? []} saving={settings.saving} theme={theme}
-      note="Strict agents, such as Role Orchestrator roles with completion checking on, are judged on the whole user ask, are nudged without a countdown, and are also judged after Juke's own follow-ups." />
+      note="Each agent keeps one judge session that only receives what happened since its last verdict, so the provider can reuse its cache. Agents whose owning plugin asks for whole-ask checking (Role Orchestrator roles) use that plugin's judge setting instead. Each assessment is listed in this plugin's Logs menu." />
     {!!settings.saveError && <Text accessibilityRole="alert" style={text}>{settings.saveError}</Text>}
   </ScrollView>;
 }

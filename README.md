@@ -47,10 +47,10 @@ Each juke has a switch with the same title in settings. Logs show its short id (
 | 🎯 Ten jukes | Each common way an agent stops early, above |
 | 🚧 Clear boundaries | Real questions, genuine blockers and unauthorized actions are left alone |
 | ⚖️ Your choice of judge | Reuse the judged agent's model, or pick a provider, model and reasoning level |
-| 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and non-strict Role Orchestrator runs are skipped |
+| 🔁 Loop protection | Stale verdicts are discarded, at most three nudges in a row without your input, non-strict Role Orchestrator runs are skipped |
 | 🧾 Ask ledger | Each agent's open requests survive compaction and are restated in every nudge |
 | 💾 Cached judging | One judge session per agent receives only new turns, so the provider's prompt cache does the rest |
-| 🛡️ Strict profile | Whole-ask completion checking, used by Role Orchestrator roles that opt in |
+| 🛡️ Strict profile | Adds a whole-ask completion check; otherwise identical. Used by Role Orchestrator roles that opt in |
 | 🎛️ Per-juke switches | Turn off any juke you don't want caught |
 | ✏️ Editable judge prompt | Save custom instructions or reset to the original prompt |
 | ⏸️ One-switch pause | Turn automatic assessments off without removing the plugin |
