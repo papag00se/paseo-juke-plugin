@@ -230,8 +230,9 @@ function trailing(ledger: readonly Ask[], delegationEvidence?: string, liveConte
 }
 
 /** The first message of a judge session: stable instructions, then the whole conversation. */
-export function initialJudgeMessage(instructions: string, timeline: readonly AgentTimelineItem[], ledger: readonly Ask[] = [], delegationEvidence?: string, liveContext?: string): string {
-  return `${instructions}\n\nConversation evidence:\n${evidence(timeline)}${trailing(ledger, delegationEvidence, liveContext)}`;
+export function initialJudgeMessage(instructions: string, timeline: readonly AgentTimelineItem[], ledger: readonly Ask[] = [], delegationEvidence?: string, liveContext?: string, earlierItems = 0): string {
+  const earlier = earlierItems > 0 ? `The ${earlierItems} earlier timeline items were already judged by a previous judge session; the ask ledger below carries the user's requests from them. Treat open ledger items as still requested.\n` : "";
+  return `${instructions}\n\nConversation evidence:\n${earlier}${evidence(timeline)}${trailing(ledger, delegationEvidence, liveContext)}`;
 }
 
 /** Later turns append only what happened since the judge's last verdict. */

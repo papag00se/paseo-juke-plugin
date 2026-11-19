@@ -25,6 +25,8 @@ export interface JudgeSession {
 
 /** Rotate before a judge session approaches small context windows (roughly 100k tokens). */
 export const RotateAfterChars = 400_000;
+/** A replacement judge session sees the ledger plus this many of the latest timeline items. */
+export const RecentItemsOnRestart = 60;
 const MaxLedgerItems = 60;
 
 const storePath = () => join(process.env.PASEO_HOME || join(homedir(), ".paseo"), "plugin-data", "juke-sessions.json");
