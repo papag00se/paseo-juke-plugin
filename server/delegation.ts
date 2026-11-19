@@ -37,17 +37,14 @@ function descendants(all: PaseoAgent[], parentId: string, exclude: ReadonlySet<s
   return children;
 }
 
-/**
- * Include descendants, not only immediate children; a running grandchild still has work in flight.
- * With `allowRunning`, a finished result is reviewed even while siblings still work.
- */
-export async function idleDelegation(paseo: PaseoApi, parentId: string, allowRunning = false): Promise<{ parent: PaseoAgent; children: PaseoAgent[] } | null> {
+/** Include descendants, not only immediate children; a running grandchild still has work in flight. */
+export async function idleDelegation(paseo: PaseoApi, parentId: string): Promise<{ parent: PaseoAgent; children: PaseoAgent[] } | null> {
   const all = await agents(paseo);
   const parent = all.find(agent => agent.id === parentId);
   if (!genuinelyIdle(parent)) return null;
   const children = descendants(all, parentId);
   const busy = (child: PaseoAgent) => !["idle", "error", "closed"].includes(child.status) || !!child.activeTurn || !!child.pendingPermissions?.length;
-  if (!children.length || (allowRunning ? children.every(busy) : children.some(busy))) return null;
+  if (!children.length || children.some(busy)) return null;
   return { parent: parent!, children };
 }
 

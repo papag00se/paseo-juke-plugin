@@ -106,6 +106,22 @@ export function isJukeFollowUp(timeline: readonly AgentTimelineItem[]): boolean 
   return false;
 }
 
+/** Nudges in a row without a new message from the user; Juke stops at `MaxConsecutiveFollowUps`. */
+export function consecutiveFollowUps(timeline: readonly AgentTimelineItem[]): number {
+  let count = 0;
+  for (let index = timeline.length - 1; index >= 0; index -= 1) {
+    const item = timeline[index];
+    if (item.type !== "user_message") continue;
+    if (item.text.startsWith(JukeFollowUpPrefix)) count += 1;
+    else if (!isGeneratedMessage(item.text)) break;
+  }
+  return count;
+}
+export const MaxConsecutiveFollowUps = 3;
+
+/** Sent when the judge answers twice without a valid verdict: completion is not assumed. */
+export const UnconfirmedFollowUp = "Completion is unconfirmed. State how each of the user's asks is completed, with the evidence for it, and finish any that are not.";
+
 const SupportingEvidenceBudget = 48_000;
 
 /** These are known generated envelopes, not a reliable sender identity. */
@@ -183,7 +199,7 @@ export type JudgeProfile = "default" | "strict";
 
 const LedgerInstruction = `Also return "asks" in the same JSON object: the complete ask ledger for this agent. List every user request, acceptance criterion, standing direction and authorization limit that is still relevant, each under 30 words, with status "open", "done" or "blocked". Start from the current ledger, add items from new user messages, and update statuses from the evidence. Drop an item only when the user explicitly withdrew or replaced it. At most 30 items.`;
 
-const StrictInstruction = `This agent's owner requires the whole user ask to be completed, not only this turn's stop to be justified. Judge every open ledger item, not just the latest one. Choose "leave-alone" when every open item is either covered by verified in-flight work or genuinely needs the owner or an external event. Name each running child, process or unit, or each blocker, in the rationale. One running child never exempts unrelated runnable work.`;
+const StrictInstruction = `This agent's owner requires the whole user ask to be completed, not only this turn's stop to be justified. Judge every open ledger item, not just the latest one. Choose "leave-alone" when every open item is either covered by verified in-flight work or genuinely needs the owner or an external event, and name each running child or blocker in the rationale. One running child never exempts unrelated runnable work.`;
 
 const UnfinishedAskRule = `${UnfinishedAsk}: An open ledger item remains that the agent can safely perform or advance now. Plans, strategy descriptions and reports of intended work are not work performed. A blocker on one item does not block the others. If repeated full runs produce changing or recurring failures, do not prescribe another generic rerun. Name the unmet criterion, the next concrete investigation or change, and the evidence it must produce, keeping the request active. A disproved hypothesis leads to the next most informative unresolved item, never to a terminal conclusion. Follow-up: name the specific open items and the next concrete action for each.`;
 

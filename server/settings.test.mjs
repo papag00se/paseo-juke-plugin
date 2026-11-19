@@ -26,12 +26,12 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
   // Revisions are content-addressed, not monotonic: false → true restores the
   // original revision. Subscribers must still invalidate the old assessment.
   // These assessment tests send at once; the countdown has its own tests below.
-  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, strictJudgeProvider: "", strictJudgeModel: "", strictJudgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 0, pauseAutoResume: true, pauseAutoResumeMinutes: 5, ...judgeValues }, revision: String(enabled) };
+  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 0, pauseAutoResume: true, pauseAutoResumeMinutes: 5, ...judgeValues }, revision: String(enabled) };
   const listeners = new Set();
   t.mock.method(console, "log", () => {});
   const agent = { id: "original", workspaceId: "workspace", provider: "test", model: "test-model", labels: {} };
   const paseo = {
-    agents: { ref: id => ({
+    agents: { list: async () => ({ entries: [{ agent }], pageInfo: { hasMore: false } }), ref: id => ({
       refresh: async () => { if (preparation) await preparation.promise; return { agent }; },
       send: async message => { sent.push({ id, message }); },
       timeline: { refetch: async () => { if (timelineError) throw new Error("history unavailable"); return { entries: fullTimeline.map(item => ({ item })), hasOlder: false }; }, append: async row => { rows.push(row); } },
@@ -66,7 +66,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
 test("native settings preserve automatic assessment by default; enabled runs still reuse the original model", async t => {
   const h = setup(t); await h.fire();
   assert.equal(h.registered[0].scope, "host");
-  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgePrompt: DefaultJudgePrompt, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, strictJudgeProvider: "", strictJudgeModel: "", strictJudgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 15, pauseAutoResume: true, pauseAutoResumeMinutes: 5 });
+  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgePrompt: DefaultJudgePrompt, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 15, pauseAutoResume: true, pauseAutoResumeMinutes: 5 });
   assert.deepEqual(h.registered[0].schema.parse({ enabled: false }).enabled, false);
   assert.equal(h.created.length, 1);
   assert.equal(h.created[0].config.provider, "test/test-model");

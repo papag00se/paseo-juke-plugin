@@ -4,16 +4,18 @@ import type { AgentTimelineItem } from "@getpaseo/protocol/agent-types";
 import { randomUUID } from "node:crypto";
 import { childEvidence, descendantSnapshot, idleDelegation, parentTimeline } from "./server/delegation";
 import { JudgeSessions, mergeLedger, RotateAfterChars } from "./server/judge-sessions";
-import { profileFor } from "./server/profiles";
+import { profileFor, type ResolvedProfile } from "./server/profiles";
 import { awaitFinishNotification, type FinishNotificationTiming } from "./server/finish-notifications";
 import { isRoleOrchestrated, isRoleOrchestratorHelper } from "./server/ownership";
-import { configuredJudge, configuredStrictJudge, enabledJukes, preferences, type JudgeChoice } from "./shared/settings";
+import { configuredJudge, enabledJukes, preferences, type JudgeChoice } from "./shared/settings";
 import { JukeIds, type JukeId } from "./shared/jukes";
 import { cancelNudge, pauseAgent, resumeAgent, sendNudgeNow, type NudgeRow, type PauseRow } from "./shared/nudge";
 import { NudgeQueue, PauseBook } from "./server/nudges";
 import {
+  consecutiveFollowUps,
   initialJudgeMessage,
-  isJukeFollowUp,
+  MaxConsecutiveFollowUps,
+  UnconfirmedFollowUp,
   JukeFollowUpPrefix,
   judgeInstructions,
   judgeLabels,
@@ -40,7 +42,7 @@ export default function contribute(server: PluginServerContext) {
     if (state.status !== "ready") throw new Error(`Juke settings unavailable: ${state.error}`);
     const values = state.values;
     return {
-      enabled: values.enabled, jukes: enabledJukes(values), prompt: values.judgePrompt, judge: configuredJudge(values), strictJudge: configuredStrictJudge(values), revision: `${epoch}:${state.revision}`,
+      enabled: values.enabled, jukes: enabledJukes(values), prompt: values.judgePrompt, judge: configuredJudge(values), revision: `${epoch}:${state.revision}`,
       nudgeDelaySeconds: values.nudgeDelaySeconds, autoResume: { enabled: values.pauseAutoResume, minutes: values.pauseAutoResumeMinutes },
     };
   });
@@ -48,7 +50,7 @@ export default function contribute(server: PluginServerContext) {
 }
 
 type JukeSettings = {
-  enabled: boolean; jukes: readonly JukeId[]; prompt?: string; judge?: JudgeChoice | null; strictJudge?: JudgeChoice | null; revision: string;
+  enabled: boolean; jukes: readonly JukeId[]; prompt?: string; judge?: JudgeChoice | null; revision: string;
   nudgeDelaySeconds: number; autoResume: { enabled: boolean; minutes: number };
 };
 
@@ -131,7 +133,7 @@ export function originalAutomaticContribution(
 
   // Only the fields assessment reads, so a delegation review can stand in for a turn-ended event.
   type AssessedTurn = { agent: Pick<PluginLifecycleEvents["agent.turn_ended"]["agent"], "id" | "workspaceId" | "provider">; turnId: string | null };
-  type DelegationReview = { evidence: string; stillCurrent: () => Promise<boolean>; timeline: AgentTimelineItem[]; profile: JudgeProfile };
+  type DelegationReview = { evidence: string; stillCurrent: () => Promise<boolean>; timeline: AgentTimelineItem[]; resolved: ResolvedProfile | null };
   const assess = (event: AssessedTurn, { paseo }: PluginHookContext, delegation?: DelegationReview) => {
     const generation = advance(event.agent.id);
     // Inference can outlive the lifecycle hook deadline, so keep it detached after recording
@@ -143,7 +145,8 @@ export function originalAutomaticContribution(
         if (!preferences.enabled || stopped || !event.agent.workspaceId) return;
         const snapshot = await paseo.agents.ref(agentId).refresh();
         if (isRoleOrchestratorHelper(snapshot?.agent?.labels)) return;
-        const profile: JudgeProfile = delegation?.profile ?? (await profileFor(snapshot?.agent?.labels)) ?? "default";
+        const resolved = delegation ? delegation.resolved : await profileFor(snapshot?.agent?.labels);
+        const profile: JudgeProfile = resolved?.profile ?? "default";
         const strict = profile === "strict";
         if (!strict) {
           if (!preferences.jukes.length || (delegation && !preferences.jukes.includes("abandoned-after-delegation"))) return;
@@ -160,7 +163,9 @@ export function originalAutomaticContribution(
         }
         // Without a configured judge, reuse the judged agent. The SDK needs a "provider/model"
         // selection and the hook payload carries only the bare provider, so resolve its live model.
-        const choice = (strict ? preferences.strictJudge : null) ?? preferences.judge;
+        // A strict agent's owning plugin chooses its judge; otherwise Juke's setting. Either way the
+        // default is the judged agent's own model.
+        const choice = strict ? resolved?.judge ?? null : preferences.judge;
         const model = choice?.model ?? snapshot?.agent?.runtimeInfo?.model ?? snapshot?.agent?.model;
         if (!model) {
           console.error("[juke] no model resolved for judge", { agentId });
@@ -177,14 +182,21 @@ export function originalAutomaticContribution(
         // complete canonical history so earlier user direction is never silently dropped.
         const timeline = delegation ? delegation.timeline : await parentTimeline(paseo, agentId);
         if (!(await current())) return;
-        // Lifecycle events no longer carry history, so Juke's own follow-up turn is recognised here.
-        // A strict agent is judged after a follow-up too: its whole ask must still be finished.
-        if (!delegation && !strict && isJukeFollowUp(timeline)) return;
+        // The agent's reply to a nudge is judged like any turn, but Juke stops after a few nudges in a
+        // row without a new message from the user, so it can never nag in a loop.
+        if (consecutiveFollowUps(timeline) >= MaxConsecutiveFollowUps) {
+          console.log("[juke] assessment skipped: follow-up limit reached", { agentId, limit: MaxConsecutiveFollowUps });
+          return;
+        }
         const checks = delegation && !strict ? ["abandoned-after-delegation" as const] : preferences.jukes;
         const instructions = judgeInstructions(checks, preferences.prompt, preferences.jukes, profile);
         const thinking = choice?.thinkingOptionId ?? null;
         const key = JSON.stringify([selection, thinking, instructions]);
-        const liveContext = strict ? `Live descendant snapshot (status and permission counts, not proof of task coverage): ${JSON.stringify(await descendantSnapshot(paseo, agentId, ownJudgeIds))}` : undefined;
+        // Running subagents are evidence of in-flight work. An unreadable directory is said so, never guessed.
+        const liveContext = await descendantSnapshot(paseo, agentId, ownJudgeIds).then(
+          (snapshot) => `Live descendant snapshot (status and permission counts, not proof of task coverage): ${JSON.stringify(snapshot)}`,
+          (error) => { console.error("[juke] descendant snapshot unavailable", { agentId, error }); return "Live descendant snapshot: unavailable."; },
+        );
 
         await sessions.load();
         const outcome = await sessions.exclusive(agentId, async () => {
@@ -256,9 +268,10 @@ export function originalAutomaticContribution(
         const { verdict, ledger, judgeId } = outcome;
         const open = ledger.filter((ask) => ask.status === "open");
         if (!verdict) {
-          // Strict agents fail closed: an undecidable verdict must never pass as completion.
-          if (!strict || !(await current())) return;
-          await deliverNudge(paseo, agentId, UnfinishedAsk, "The completion check could not produce a valid verdict, so completion is unconfirmed. Treat the ask as not yet complete and continue the remaining work.", open, 0, preferences);
+          // Fail closed: an undecidable verdict never passes as completion. Asking the agent to account
+          // for each ask also puts them in the conversation for the next judgement.
+          if (!(await current())) return;
+          await deliverNudge(paseo, agentId, strict ? UnfinishedAsk : "claimed-done-but-not", UnconfirmedFollowUp, open, preferences.nudgeDelaySeconds * 1000, preferences, current);
           return;
         }
         console.log("[juke] assessment completed", {
@@ -278,7 +291,7 @@ export function originalAutomaticContribution(
           console.log("[juke] continuation skipped: juke turned off", { agentId, pattern: verdict.pattern });
           return;
         }
-        await deliverNudge(paseo, agentId, verdict.pattern, verdict.followUp, open, strict ? 0 : preferences.nudgeDelaySeconds * 1000, preferences, current);
+        await deliverNudge(paseo, agentId, verdict.pattern, verdict.followUp, open, preferences.nudgeDelaySeconds * 1000, preferences, current);
       } catch (error) {
         console.error("[juke] inference judge failed", { agentId, error });
       }
@@ -316,11 +329,10 @@ export function originalAutomaticContribution(
           const version = delegationVersion.get(parentId);
           const preferences = await readSettings();
           const parentSnapshot = await pending.context.paseo.agents.ref(parentId).refresh();
-          const profile: JudgeProfile = (await profileFor(parentSnapshot?.agent?.labels)) ?? "default";
-          const strict = profile === "strict";
+          const resolved = await profileFor(parentSnapshot?.agent?.labels);
+          const strict = resolved?.profile === "strict";
           if (!preferences.enabled || (!strict && !preferences.jukes.includes("abandoned-after-delegation"))) continue;
-          // A strict parent handles every finished result, even while siblings still work.
-          const tree = await idleDelegation(pending.context.paseo, parentId, strict);
+          const tree = await idleDelegation(pending.context.paseo, parentId);
           if (!tree || (!strict && await isRoleOrchestrated(pending.context.paseo, tree.parent))) continue;
           // Paseo's own child-finished notification normally resumes an idle parent within seconds.
           // Judge only if it did not, so a judge is never spent on a parent about to resume itself.
@@ -336,11 +348,11 @@ export function originalAutomaticContribution(
           const evidence = await childEvidence(pending.context.paseo, tree.children, pending.event.agent.id);
           const stillCurrent = async () => {
             if (delegationVersion.get(parentId) !== version) return false;
-            const latest = await idleDelegation(pending.context.paseo, parentId, strict);
+            const latest = await idleDelegation(pending.context.paseo, parentId);
             return !!latest && latest.children.length === tree.children.length && latest.children.every(child => tree.children.some(old => old.id === child.id));
           };
           if (!(await stillCurrent())) continue;
-          assess({ agent: { id: parentId, workspaceId: tree.parent.workspaceId ?? null, provider: tree.parent.provider }, turnId: null }, pending.context, { evidence, stillCurrent, timeline, profile });
+          assess({ agent: { id: parentId, workspaceId: tree.parent.workspaceId ?? null, provider: tree.parent.provider }, turnId: null }, pending.context, { evidence, stillCurrent, timeline, resolved });
         }
       } catch (error) {
         console.error("[juke] delegated-agent assessment failed", { parentId, error });
