@@ -47,7 +47,10 @@ Each juke has a switch with the same title in settings. Logs show its short id (
 | 🎯 Ten jukes | Each common way an agent stops early, above |
 | 🚧 Clear boundaries | Real questions, genuine blockers and unauthorized actions are left alone |
 | ⚖️ Your choice of judge | Reuse the judged agent's model, or pick a provider, model and reasoning level |
-| 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and Role Orchestrator runs are skipped |
+| 🔁 Loop protection | Stale verdicts, Juke's own follow-ups and non-strict Role Orchestrator runs are skipped |
+| 🧾 Ask ledger | Each agent's open requests survive compaction and are restated in every nudge |
+| 💾 Cached judging | One judge session per agent receives only new turns, so the provider's prompt cache does the rest |
+| 🛡️ Strict profile | Whole-ask completion checking, used by Role Orchestrator roles that opt in |
 | 🎛️ Per-juke switches | Turn off any juke you don't want caught |
 | ✏️ Editable judge prompt | Save custom instructions or reset to the original prompt |
 | ⏸️ One-switch pause | Turn automatic assessments off without removing the plugin |
@@ -86,7 +89,7 @@ Under **Judge prompt**, edit the judge's instructions and choose **Save prompt**
 
 Juke targets Paseo **0.14 through 0.16**. It is run on 0.14 and typechecked against both the pinned 0.14.0 SDK and 0.16.0. Earlier ports remain in Git history.
 
-Juke does not own execution permissions. It evaluates the user's existing task scope and leaves tool authorization to the agent harness. Role Orchestrator-owned runs are excluded because they have their own completion system.
+Juke does not own execution permissions. It evaluates the user's existing task scope and leaves tool authorization to the agent harness. Role Orchestrator-owned runs are excluded unless their role opts in to completion checking, which uses Juke's strict profile.
 
 ## Development
 

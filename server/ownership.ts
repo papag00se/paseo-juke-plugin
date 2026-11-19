@@ -24,6 +24,11 @@ export interface AgentLookup {
   };
 }
 
+/** Role Orchestrator's internal helper agents (context summaries, old gate judges) are never judged. */
+export function isRoleOrchestratorHelper(labels: Record<string, string> | null | undefined): boolean {
+  return !!labels && ("paseo-role-orchestrator.completion-gate" in labels || "paseo-role-orchestrator.context-helper" in labels);
+}
+
 export function hasRoleOrchestratorLabel(labels: Record<string, string> | null | undefined): boolean {
   if (!labels) return false;
   return ROLE_ORCHESTRATOR_LABELS.some((label) => label in labels);

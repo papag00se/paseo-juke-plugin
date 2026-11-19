@@ -2,6 +2,9 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { registerHooks } from "node:module";
 import { setImmediate } from "node:timers/promises";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 registerHooks({ resolve(specifier, context, next) {
   try { return next(specifier, context); }
@@ -17,11 +20,13 @@ const continueAs = pattern => ({ status: "idle", lastMessage: JSON.stringify({ d
 const verdict = continueAs("announced-then-stopped");
 
 function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, result = verdict, timelineError, fullTimeline = [{ type: "user_message", text: "Finish the work." }] } = {}) {
+  // Judge sessions and profiles live under PASEO_HOME; never touch the real one, and start each test clean.
+  process.env.PASEO_HOME = mkdtempSync(join(tmpdir(), "juke-settings-test-"));
   const hooks = new Map(), handlers = new Map(), created = [], sent = [], archived = [], registered = [], rows = [];
   // Revisions are content-addressed, not monotonic: false → true restores the
   // original revision. Subscribers must still invalidate the old assessment.
   // These assessment tests send at once; the countdown has its own tests below.
-  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 0, pauseAutoResume: true, pauseAutoResumeMinutes: 5, ...judgeValues }, revision: String(enabled) };
+  let state = { status: "ready", values: { enabled, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, strictJudgeProvider: "", strictJudgeModel: "", strictJudgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 0, pauseAutoResume: true, pauseAutoResumeMinutes: 5, ...judgeValues }, revision: String(enabled) };
   const listeners = new Set();
   t.mock.method(console, "log", () => {});
   const agent = { id: "original", workspaceId: "workspace", provider: "test", model: "test-model", labels: {} };
@@ -31,6 +36,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
       send: async message => { sent.push({ id, message }); },
       timeline: { refetch: async () => { if (timelineError) throw new Error("history unavailable"); return { entries: fullTimeline.map(item => ({ item })), hasOlder: false }; }, append: async row => { rows.push(row); } },
       archive: async () => { archived.push(id); },
+      run: async () => judgement ? judgement.promise : result,
     }) },
     workspaces: { ref: () => ({ agents: { create: async options => {
       created.push(options);
@@ -51,7 +57,8 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
     changePrompt(judgePrompt) { state = { ...state, values: { ...state.values, judgePrompt }, revision: judgePrompt }; for (const listener of listeners) listener(state); },
     async fire() {
       hooks.get("agent.turn_ended")({ agent, outcome: { kind: "completed" }, timeline: [{ type: "user_message", text: "Finish the work." }], turnId: "turn" }, { paseo });
-      await setImmediate();
+      // Assessment reads the judge-session and profile files, so let real I/O settle.
+      await new Promise(resolve => setTimeout(resolve, 40));
     },
   };
 }
@@ -59,7 +66,7 @@ function setup(t, { enabled = true, judgeValues = {}, preparation, judgement, re
 test("native settings preserve automatic assessment by default; enabled runs still reuse the original model", async t => {
   const h = setup(t); await h.fire();
   assert.equal(h.registered[0].scope, "host");
-  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgePrompt: DefaultJudgePrompt, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 15, pauseAutoResume: true, pauseAutoResumeMinutes: 5 });
+  assert.deepEqual(h.registered[0].schema.parse({}), { enabled: true, judgePrompt: DefaultJudgePrompt, judgeProvider: "", judgeModel: "", judgeThinkingOptionId: null, strictJudgeProvider: "", strictJudgeModel: "", strictJudgeThinkingOptionId: null, disabledJukes: [], nudgeDelaySeconds: 15, pauseAutoResume: true, pauseAutoResumeMinutes: 5 });
   assert.deepEqual(h.registered[0].schema.parse({ enabled: false }).enabled, false);
   assert.equal(h.created.length, 1);
   assert.equal(h.created[0].config.provider, "test/test-model");
@@ -93,7 +100,7 @@ test("editing the prompt during assessment discards the old verdict and the next
   judgement.resolve(verdict); await setImmediate();
   assert.deepEqual(h.sent, []);
   await h.fire();
-  assert.match(h.created[1].prompt, /^New instructions\n\nDetermine the user's overall goal/);
+  assert.match(h.created[1].prompt, /^New instructions\n\n[\s\S]*Determine the user's overall goal/);
   assert.match(h.created[1].prompt, /Conversation evidence:/);
   assert.equal(h.sent.length, 1);
   h.changePrompt(DefaultJudgePrompt);

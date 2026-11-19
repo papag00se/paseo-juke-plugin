@@ -23,12 +23,6 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
 
   const values = settings.values;
   const save = (patch: Partial<typeof values>) => { void settings.save({ ...values, ...patch }, settings.revision); };
-  // Keep a saved provider listed even if it is not ready right now, so the selection stays visible.
-  const providers = (catalog.data ?? []).filter(entry => entry.enabled && (entry.status === "ready" || entry.provider === values.judgeProvider));
-  const provider = providers.find(entry => entry.provider === values.judgeProvider);
-  const models = (provider?.models ?? []).filter(model => model.isSelectable !== false);
-  const model = models.find(candidate => candidate.id === values.judgeModel);
-  const sameAsAgent = values.judgeProvider === SAME_AS_AGENT;
   const toggleJuke = (id: JukeId, on: boolean) => save({ disabledJukes: on ? values.disabledJukes.filter(other => other !== id) : [...values.disabledJukes, id] });
 
   return <ScrollView contentContainerStyle={{ padding: layout.compact ? 12 : 20, gap: 16 }}>
@@ -59,23 +53,48 @@ export function JukeSettings({ theme, layout }: PluginSurfaceProps) {
       <Text style={muted}>Turn one off to let agents stop that way without a nudge.</Text>
     </SettingsSection>
     <PromptEditor key={values.judgePrompt} value={values.judgePrompt} saving={settings.saving} theme={theme} onSave={judgePrompt => save({ judgePrompt })} />
-    <SettingsSection title="Judge model">
-      <SettingsCard>
-        <SettingsSelect label="Provider" value={values.judgeProvider} disabled={settings.saving}
-          options={[{ value: SAME_AS_AGENT, label: "Same as the agent being judged" }, ...providers.map(entry => ({ value: entry.provider, label: entry.label ?? entry.provider }))]}
-          onValueChange={judgeProvider => save({ judgeProvider, judgeModel: "", judgeThinkingOptionId: null })} />
-        {sameAsAgent ? null : <SettingsSelect label="Model" value={values.judgeModel} disabled={settings.saving}
-          options={[{ value: "", label: "Choose a model" }, ...models.map(candidate => ({ value: candidate.id, label: candidate.label }))]}
-          onValueChange={judgeModel => save({ judgeModel, judgeThinkingOptionId: models.find(candidate => candidate.id === judgeModel)?.defaultThinkingOptionId ?? null })} />}
-        {sameAsAgent || !model?.thinkingOptions?.length ? null : <SettingsSelect label="Reasoning level" value={values.judgeThinkingOptionId ?? MODEL_DEFAULT} disabled={settings.saving}
-          options={[{ value: MODEL_DEFAULT, label: "Model default" }, ...model.thinkingOptions.map(option => ({ value: option.id, label: option.label }))]}
-          onValueChange={id => save({ judgeThinkingOptionId: id || null })} />}
-      </SettingsCard>
-      {!sameAsAgent && !values.judgeModel ? <Text style={text}>Choose a model. Until then, Juke uses the judged agent's model.</Text> : null}
-      {!!settings.saveError && <Text accessibilityRole="alert" style={text}>{settings.saveError}</Text>}
-      <Text style={muted}>Agents launched by Role Orchestrator are skipped, so the two never compete over the same turn. Each assessment is listed in this plugin's Logs menu.</Text>
-    </SettingsSection>
+    <JudgeModelSection title="Judge model" sameLabel="Same as the agent being judged" fallback="the judged agent's model"
+      choice={{ provider: values.judgeProvider, model: values.judgeModel, thinking: values.judgeThinkingOptionId }}
+      onChange={next => save({ judgeProvider: next.provider, judgeModel: next.model, judgeThinkingOptionId: next.thinking })}
+      providers={catalog.data ?? []} saving={settings.saving} theme={theme}
+      note="Each agent keeps one judge session that only receives what happened since its last verdict, so the provider can reuse its cache. Each assessment is listed in this plugin's Logs menu." />
+    <JudgeModelSection title="Strict judge model" sameLabel="Same as the judge model above" fallback="the judge model above"
+      choice={{ provider: values.strictJudgeProvider, model: values.strictJudgeModel, thinking: values.strictJudgeThinkingOptionId }}
+      onChange={next => save({ strictJudgeProvider: next.provider, strictJudgeModel: next.model, strictJudgeThinkingOptionId: next.thinking })}
+      providers={catalog.data ?? []} saving={settings.saving} theme={theme}
+      note="Strict agents, such as Role Orchestrator roles with completion checking on, are judged on the whole user ask, are nudged without a countdown, and are also judged after Juke's own follow-ups." />
+    {!!settings.saveError && <Text accessibilityRole="alert" style={text}>{settings.saveError}</Text>}
   </ScrollView>;
+}
+
+type ProviderEntry = Awaited<ReturnType<ReturnType<typeof usePaseo>["providers"]["snapshot"]>>["entries"][number];
+type Choice = { provider: string; model: string; thinking: string | null };
+
+function JudgeModelSection({ title, sameLabel, fallback, choice, onChange, providers: all, saving, theme, note }: {
+  title: string; sameLabel: string; fallback: string; choice: Choice; onChange: (next: Choice) => void;
+  providers: readonly ProviderEntry[]; saving: boolean; theme: PluginSurfaceProps["theme"]; note: string;
+}) {
+  // Keep a saved provider listed even if it is not ready right now, so the selection stays visible.
+  const providers = all.filter(entry => entry.enabled && (entry.status === "ready" || entry.provider === choice.provider));
+  const provider = providers.find(entry => entry.provider === choice.provider);
+  const models = (provider?.models ?? []).filter(model => model.isSelectable !== false);
+  const model = models.find(candidate => candidate.id === choice.model);
+  const same = choice.provider === SAME_AS_AGENT;
+  return <SettingsSection title={title}>
+    <SettingsCard>
+      <SettingsSelect label="Provider" value={choice.provider} disabled={saving}
+        options={[{ value: SAME_AS_AGENT, label: sameLabel }, ...providers.map(entry => ({ value: entry.provider, label: entry.label ?? entry.provider }))]}
+        onValueChange={provider => onChange({ provider, model: "", thinking: null })} />
+      {same ? null : <SettingsSelect label="Model" value={choice.model} disabled={saving}
+        options={[{ value: "", label: "Choose a model" }, ...models.map(candidate => ({ value: candidate.id, label: candidate.label }))]}
+        onValueChange={id => onChange({ ...choice, model: id, thinking: models.find(candidate => candidate.id === id)?.defaultThinkingOptionId ?? null })} />}
+      {same || !model?.thinkingOptions?.length ? null : <SettingsSelect label="Reasoning level" value={choice.thinking ?? MODEL_DEFAULT} disabled={saving}
+        options={[{ value: MODEL_DEFAULT, label: "Model default" }, ...model.thinkingOptions.map(option => ({ value: option.id, label: option.label }))]}
+        onValueChange={id => onChange({ ...choice, thinking: id || null })} />}
+    </SettingsCard>
+    {!same && !choice.model ? <Text style={{ color: theme.colors.foreground }}>Choose a model. Until then, Juke uses {fallback}.</Text> : null}
+    <Text style={{ color: theme.colors.foregroundMuted }}>{note}</Text>
+  </SettingsSection>;
 }
 
 function PromptEditor({ value, saving, theme, onSave }: {
