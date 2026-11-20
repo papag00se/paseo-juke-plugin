@@ -19,6 +19,7 @@ import {
   UnconfirmedFollowUp,
   JukeFollowUpPrefix,
   judgeInstructions,
+  JukeJudgeLabel,
   judgeLabels,
   nextJudgeMessage,
   parseVerdict,
@@ -242,7 +243,7 @@ export function originalAutomaticContribution(
               config: {
                 provider: selection,
                 ...(thinking ? { thinkingOptionId: thinking } : {}),
-                systemPrompt: "You are a read-only semantic evaluator. Follow the prompt exactly and emit only its requested JSON.",
+                systemPrompt: "You are a read-only semantic evaluator. You have no need of tools: do not use any. Follow the prompt exactly and emit only its requested JSON.",
               },
             });
             ownJudgeIds.add(judge.id);
@@ -376,6 +377,21 @@ export function originalAutomaticContribution(
     })();
   };
 
+  // A judge only evaluates the text it is given. Any tool permission it raises is refused, so a
+  // transcript that tries to talk the judge into running something gets nowhere.
+  const removePermission = server.on("agent.permission_requested", ({ agent, request }, { paseo }) => {
+    void (async () => {
+      const isJudge = ownJudgeIds.has(agent.id)
+        || (agent.parentAgentId !== null && Boolean((await paseo.agents.ref(agent.id).refresh())?.agent.labels?.[JukeJudgeLabel]));
+      if (!isJudge) return;
+      await paseo.agents.ref(agent.id).respondToPermission({
+        requestId: request.id,
+        response: { behavior: "deny", message: "The Juke judge is read-only: it evaluates the supplied text and may not use tools." },
+      });
+      console.error("[juke] refused a tool permission requested by a judge", { judgeId: agent.id, tool: request.name });
+    })().catch((error) => console.error("[juke] could not refuse a judge permission", { agentId: agent.id, error }));
+  });
+
   const removeEnded = server.on("agent.turn_ended", (event, context) => {
     if (ownJudgeIds.has(event.agent.id)) return;
     // A turn ending anywhere below an agent is activity for its pause. Touch before any review runs.
@@ -409,6 +425,7 @@ export function originalAutomaticContribution(
     stopped = true;
     void nudges.clear();
     removeStarted();
+    removePermission();
     removeEnded();
   };
 }
