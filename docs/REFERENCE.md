@@ -99,3 +99,7 @@ The unit suite covers verdict parsing (prose, fences, and null fields), the
 self-trigger guard, the role-ownership ancestry walk (including cycles and
 depth bounds), and, for every juke, that turning it off removes it from the
 prompt's checks, describes it as accepted behavior, and blocks its follow-up.
+
+## Judge permissions
+
+A judge only evaluates text. Juke tells it not to use tools and refuses every permission request a judge session raises (the plugin listens for `agent.permission_requested` on judge sessions, identified by the `juke-judge` label, and answers deny), so a transcript that tries to talk the judge into running something cannot get a tool call approved. Judge sessions are created without extra MCP servers or plugin tools.
